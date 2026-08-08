@@ -403,7 +403,7 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
-    collection, addDoc, onSnapshot, query, orderBy
+    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // --- Configuración de tu proyecto de Firebase ---
@@ -458,6 +458,8 @@
   const courseList = document.getElementById('courseList');
   const courseEmpty = document.getElementById('courseEmpty');
   let cursosListenerActivo = false;
+  let cursosData = [];
+  let profesoresData = [];
 
   function clearMsgs(){
     errorMsg.style.display = 'none';
@@ -557,29 +559,79 @@
     }
   });
 
+  function renderCourseList(){
+    courseList.innerHTML = '';
+    if (cursosData.length === 0) {
+      courseEmpty.style.display = 'block';
+      return;
+    }
+    courseEmpty.style.display = 'none';
+    cursosData.forEach(curso => {
+      const li = document.createElement('li');
+      li.className = 'course-item';
+      li.style.flexDirection = 'column';
+      li.style.alignItems = 'stretch';
+      li.style.gap = '10px';
+
+      const opcionesProfesores = profesoresData.map(p =>
+        `<option value="${p.uid}" ${p.uid === curso.profesorUid ? 'selected' : ''}>${p.email}</option>`
+      ).join('');
+
+      li.innerHTML = `
+        <div>
+          <div class="course-name">${curso.nombre}</div>
+          <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select class="profesor-select" data-curso-id="${curso.id}" style="flex:1; min-width:160px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; background:#fff;">
+            <option value="">— Sin profesor asignado —</option>
+            ${opcionesProfesores}
+          </select>
+          <button type="button" class="assign-btn" data-curso-id="${curso.id}" style="padding:9px 14px; border:none; border-radius:8px; background:var(--teal); color:#fff; font-size:13px; font-weight:600; cursor:pointer;">Guardar</button>
+        </div>
+        <div class="assign-status" data-status-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none;">Profesor asignado ✓</div>
+      `;
+      courseList.appendChild(li);
+    });
+
+    document.querySelectorAll('.assign-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cursoId = btn.dataset.cursoId;
+        const select = document.querySelector(`.profesor-select[data-curso-id="${cursoId}"]`);
+        const profesorUid = select.value;
+        const profesorEmail = select.options[select.selectedIndex]?.text || '';
+        btn.disabled = true;
+        try {
+          await updateDoc(doc(db, 'cursos', cursoId), {
+            profesorUid: profesorUid || null,
+            profesorEmail: profesorUid ? profesorEmail : null
+          });
+          const status = document.querySelector(`.assign-status[data-status-for="${cursoId}"]`);
+          status.style.display = 'block';
+          setTimeout(() => { status.style.display = 'none'; }, 2500);
+        } catch (err) {
+          alert('No se pudo guardar el profesor asignado. Intenta de nuevo.');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   function iniciarListaCursos(){
     if (cursosListenerActivo) return;
     cursosListenerActivo = true;
-    const q = query(collection(db, 'cursos'), orderBy('creado', 'desc'));
-    onSnapshot(q, (snap) => {
-      courseList.innerHTML = '';
-      if (snap.empty) {
-        courseEmpty.style.display = 'block';
-        return;
-      }
-      courseEmpty.style.display = 'none';
-      snap.forEach(docSnap => {
-        const curso = docSnap.data();
-        const li = document.createElement('li');
-        li.className = 'course-item';
-        li.innerHTML = `
-          <div>
-            <div class="course-name">${curso.nombre}</div>
-            <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
-          </div>
-        `;
-        courseList.appendChild(li);
-      });
+
+    const qProfesores = query(collection(db, 'usuarios'), where('rol', '==', 'profesor'));
+    onSnapshot(qProfesores, (snap) => {
+      profesoresData = snap.docs.map(d => ({ uid: d.id, email: d.data().email }));
+      renderCourseList();
+    });
+
+    const qCursos = query(collection(db, 'cursos'), orderBy('creado', 'desc'));
+    onSnapshot(qCursos, (snap) => {
+      cursosData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderCourseList();
     });
   }
 
