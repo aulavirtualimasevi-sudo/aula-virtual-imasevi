@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aula Virtual IMASEVI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16233d;
+    --ink-soft:#2b3c5e;
+    --paper:#eef1f6;
+    --paper-card:#ffffff;
+    --amber:#d69a1f;
+    --amber-deep:#b57e10;
+    --teal:#2f7b6d;
+    --line:#d7dde7;
+    --danger:#b3372c;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:var(--paper);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(22,35,61,0.06) 1px, transparent 0);
+    background-size: 22px 22px;
+    font-family:'Inter', sans-serif;
+    color:var(--ink);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+
+  /* ---------- Encabezado ---------- */
+  header.brand{
+    width:100%;
+    background:var(--ink);
+    color:#fff;
+    padding:22px 20px 20px;
+    text-align:center;
+    border-bottom:4px solid var(--amber);
+  }
+  header.brand h1{
+    font-family:'Source Serif 4', serif;
+    font-weight:600;
+    font-size:clamp(24px, 4vw, 34px);
+    margin:0 0 4px;
+    letter-spacing:0.3px;
+  }
+  header.brand p{
+    margin:0;
+    font-size:13px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:#c9d3e6;
+  }
+
+  main{
+    width:100%;
+    max-width:460px;
+    padding:28px 18px 60px;
+  }
+
+  /* ---------- Selector de rol tipo "carnet" ---------- */
+  .role-tabs{
+    display:flex;
+    gap:10px;
+    margin-bottom:22px;
+  }
+  .role-tab{
+    flex:1;
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 6px 10px;
+    text-align:center;
+    cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    user-select:none;
+  }
+  .role-tab:hover{ transform:translateY(-2px); }
+  .role-tab .role-icon{
+    width:30px; height:30px;
+    margin:0 auto 6px;
+    border-radius:50%;
+    background:var(--paper);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Source Serif 4', serif;
+    font-weight:700;
+    color:var(--ink-soft);
+  }
+  .role-tab .role-label{
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+  }
+  .role-tab.active{
+    border-color:var(--amber-deep);
+    box-shadow:0 4px 0 0 var(--amber);
+    transform:translateY(-2px);
+  }
+  .role-tab.active .role-icon{ background:var(--amber); color:#fff; }
+  .role-tab.active .role-label{ color:var(--ink); }
+
+  /* ---------- Tarjeta de login ---------- */
+  .card{
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:26px 24px 24px;
+    box-shadow:0 10px 30px rgba(22,35,61,0.06);
+  }
+  .card h2{
+    font-family:'Source Serif 4', serif;
+    font-size:20px;
+    margin:0 0 4px;
+    color:var(--ink);
+  }
+  .card .subtitle{
+    font-size:13px;
+    color:#5b6b87;
+    margin:0 0 20px;
+  }
+
+  label{
+    display:block;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  input[type=email], input[type=password], input[type=text]{
+    width:100%;
+    padding:11px 12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-size:14.5px;
+    font-family:'Inter', sans-serif;
+    margin-bottom:16px;
+    background:#fbfcfe;
+  }
+  input:focus{
+    outline:2px solid var(--teal);
+    outline-offset:1px;
+  }
+
+  button.primary{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:8px;
+    background:var(--ink);
+    color:#fff;
+    font-size:14.5px;
+    font-weight:600;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  button.primary:hover{ background:var(--ink-soft); }
+  button.primary:disabled{ opacity:.6; cursor:default; }
+
+  .switch-mode{
+    text-align:center;
+    margin-top:16px;
+    font-size:13px;
+    color:#5b6b87;
+  }
+  .switch-mode a{
+    color:var(--teal);
+    font-weight:600;
+    cursor:pointer;
+    text-decoration:none;
+  }
+  .switch-mode a:hover{ text-decoration:underline; }
+
+  .msg{
+    font-size:13px;
+    border-radius:8px;
+    padding:10px 12px;
+    margin-bottom:16px;
+    display:none;
+  }
+  .msg.error{ background:#fbeceb; color:var(--danger); border:1px solid #f0c9c5; display:block; }
+  .msg.info{ background:#eaf3f1; color:var(--teal); border:1px solid #cde3de; display:block; }
+
+  .test-note{
+    margin-top:18px;
+    font-size:11.5px;
+    line-height:1.5;
+    color:#7a8aa5;
+    text-align:center;
+  }
+
+  /* ---------- Panel (post-login) ---------- */
+  .panel{
+    display:none;
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:30px 24px;
+    text-align:center;
+  }
+  .panel .badge{
+    display:inline-block;
+    background:var(--amber);
+    color:#fff;
+    font-size:11.5px;
+    font-weight:700;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    padding:4px 12px;
+    border-radius:999px;
+    margin-bottom:14px;
+  }
+  .panel h2{
+    font-family:'Source Serif 4', serif;
+    font-size:22px;
+    margin:0 0 8px;
+  }
+  .panel p{
+    color:#5b6b87;
+    font-size:14px;
+    margin:0 0 24px;
+  }
+  button.logout{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    padding:10px 18px;
+    border-radius:8px;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  button.logout:hover{ border-color:var(--danger); color:var(--danger); }
+
+  #loadingScreen{
+    padding:60px 0;
+    text-align:center;
+    color:#7a8aa5;
+    font-size:13px;
+  }
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <h1>Aula Virtual IMASEVI</h1>
+  <p>Plataforma de estudio</p>
+</header>
+
+<main>
+
+  <div id="loadingScreen">Cargando…</div>
+
+  <!-- ---------- Vista de login ---------- -->
+  <div id="loginView" style="display:none;">
+    <div class="role-tabs">
+      <div class="role-tab active" data-role="administrador">
+        <div class="role-icon">A</div>
+        <div class="role-label">Administrador</div>
+      </div>
+      <div class="role-tab" data-role="profesor">
+        <div class="role-icon">P</div>
+        <div class="role-label">Profesor</div>
+      </div>
+      <div class="role-tab" data-role="estudiante">
+        <div class="role-icon">E</div>
+        <div class="role-label">Estudiante</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="cardTitle">Acceso Administrador</h2>
+      <p class="subtitle" id="cardSubtitle">Inicia sesión con tu correo y contraseña.</p>
+
+      <div class="msg error" id="errorMsg"></div>
+      <div class="msg info" id="infoMsg"></div>
+
+      <form id="authForm">
+        <label for="emailInput">Correo electrónico</label>
+        <input type="email" id="emailInput" required autocomplete="email">
+
+        <label for="passInput">Contraseña</label>
+        <input type="password" id="passInput" required autocomplete="current-password" minlength="6">
+
+        <button type="submit" class="primary" id="submitBtn">Iniciar sesión</button>
+      </form>
+
+      <div class="switch-mode">
+        <span id="switchText">¿No tienes cuenta?</span>
+        <a id="switchLink">Crear cuenta</a>
+      </div>
+
+      <div class="test-note">
+        Modo de prueba: por ahora, cualquier cuenta nueva que crees aquí queda<br>
+        registrada con el rol de la pestaña seleccionada arriba.
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- Vista de panel (después de iniciar sesión) ---------- -->
+  <div class="panel" id="panelView">
+    <div class="badge" id="panelBadge">Administrador</div>
+    <h2 id="panelTitle">Bienvenido</h2>
+    <p id="panelSubtitle">Tu panel se irá construyendo en los próximos pasos.</p>
+    <button class="logout" id="logoutBtn">Cerrar sesión</button>
+  </div>
+
+</main>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+    createUserWithEmailAndPassword, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // --- Configuración de tu proyecto de Firebase ---
+  const firebaseConfig = {
+    apiKey: "AIzaSyADsKOAbjiw7zChCERvAgDUBn0BagUuNh8",
+    authDomain: "aula-virtual-imasevi.firebaseapp.com",
+    projectId: "aula-virtual-imasevi",
+    storageBucket: "aula-virtual-imasevi.firebasestorage.app",
+    messagingSenderId: "463825493205",
+    appId: "1:463825493205:web:7a496cb7b7753117e5165c"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // --- Textos por rol ---
+  const roleInfo = {
+    administrador: { label: "Administrador", title: "Acceso Administrador" },
+    profesor:      { label: "Profesor",      title: "Acceso Profesor" },
+    estudiante:    { label: "Estudiante",    title: "Acceso Estudiante" },
+  };
+
+  let currentRole = "administrador";
+  let mode = "login"; // "login" | "register"
+
+  // --- Elementos ---
+  const loadingScreen = document.getElementById('loadingScreen');
+  const loginView = document.getElementById('loginView');
+  const panelView = document.getElementById('panelView');
+  const roleTabs = document.querySelectorAll('.role-tab');
+  const cardTitle = document.getElementById('cardTitle');
+  const cardSubtitle = document.getElementById('cardSubtitle');
+  const authForm = document.getElementById('authForm');
+  const emailInput = document.getElementById('emailInput');
+  const passInput = document.getElementById('passInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const switchText = document.getElementById('switchText');
+  const switchLink = document.getElementById('switchLink');
+  const errorMsg = document.getElementById('errorMsg');
+  const infoMsg = document.getElementById('infoMsg');
+  const panelBadge = document.getElementById('panelBadge');
+  const panelTitle = document.getElementById('panelTitle');
+  const panelSubtitle = document.getElementById('panelSubtitle');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  function clearMsgs(){
+    errorMsg.style.display = 'none';
+    infoMsg.style.display = 'none';
+  }
+
+  function showError(text){
+    clearMsgs();
+    errorMsg.textContent = text;
+    errorMsg.style.display = 'block';
+  }
+
+  function showInfo(text){
+    clearMsgs();
+    infoMsg.textContent = text;
+    infoMsg.style.display = 'block';
+  }
+
+  function renderRoleUI(){
+    cardTitle.textContent = mode === 'login'
+      ? roleInfo[currentRole].title
+      : `Crear cuenta — ${roleInfo[currentRole].label}`;
+    cardSubtitle.textContent = mode === 'login'
+      ? 'Inicia sesión con tu correo y contraseña.'
+      : 'Crea una cuenta de prueba con este rol.';
+    submitBtn.textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta';
+    switchText.textContent = mode === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?';
+    switchLink.textContent = mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión';
+  }
+
+  roleTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      roleTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentRole = tab.dataset.role;
+      clearMsgs();
+      renderRoleUI();
+    });
+  });
+
+  switchLink.addEventListener('click', () => {
+    mode = mode === 'login' ? 'register' : 'login';
+    clearMsgs();
+    renderRoleUI();
+  });
+
+  function traducirError(code){
+    const mapa = {
+      'auth/invalid-email': 'El correo electrónico no es válido.',
+      'auth/user-not-found': 'No existe una cuenta con ese correo.',
+      'auth/wrong-password': 'La contraseña es incorrecta.',
+      'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+      'auth/email-already-in-use': 'Ya existe una cuenta con ese correo. Intenta iniciar sesión.',
+      'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+      'auth/too-many-requests': 'Demasiados intentos. Espera un momento e intenta de nuevo.',
+    };
+    return mapa[code] || 'Ocurrió un error. Intenta de nuevo.';
+  }
+
+  authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearMsgs();
+    submitBtn.disabled = true;
+    const email = emailInput.value.trim();
+    const password = passInput.value;
+
+    try {
+      if (mode === 'register') {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        await setDoc(doc(db, 'usuarios', cred.user.uid), {
+          email: email,
+          rol: currentRole,
+          creado: serverTimestamp()
+        });
+        // onAuthStateChanged se encarga de mostrar el panel
+      } else {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        const snap = await getDoc(doc(db, 'usuarios', cred.user.uid));
+        if (!snap.exists()) {
+          await signOut(auth);
+          showError('Esta cuenta no tiene un rol asignado todavía. Contacta al Administrador.');
+          submitBtn.disabled = false;
+          return;
+        }
+        const rolReal = snap.data().rol;
+        if (rolReal !== currentRole) {
+          await signOut(auth);
+          showError(`Esta cuenta está registrada como "${roleInfo[rolReal]?.label || rolReal}", no como "${roleInfo[currentRole].label}". Entra por la pestaña correcta.`);
+          submitBtn.disabled = false;
+          return;
+        }
+        // onAuthStateChanged se encarga de mostrar el panel
+      }
+    } catch (err) {
+      showError(traducirError(err.code));
+      submitBtn.disabled = false;
+    }
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    await signOut(auth);
+  });
+
+  onAuthStateChanged(auth, async (user) => {
+    loadingScreen.style.display = 'none';
+
+    if (!user) {
+      panelView.style.display = 'none';
+      loginView.style.display = 'block';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    const snap = await getDoc(doc(db, 'usuarios', user.uid));
+    if (!snap.exists()) {
+      // No debería pasar en flujo normal, pero por seguridad:
+      loginView.style.display = 'block';
+      panelView.style.display = 'none';
+      return;
+    }
+
+    const rol = snap.data().rol;
+    loginView.style.display = 'none';
+    panelView.style.display = 'block';
+    panelBadge.textContent = roleInfo[rol]?.label || rol;
+    panelTitle.textContent = `Bienvenido/a`;
+    panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío — lo iremos llenando en los próximos pasos.`;
+  });
+</script>
+
+</body>
+</html>
