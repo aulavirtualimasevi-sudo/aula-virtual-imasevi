@@ -343,6 +343,11 @@
       <div class="msg info" id="infoMsg"></div>
 
       <form id="authForm">
+        <div id="nombreField" style="display:none;">
+          <label for="nombreInput">Nombre completo</label>
+          <input type="text" id="nombreInput" autocomplete="name">
+        </div>
+
         <label for="emailInput">Correo electrónico</label>
         <input type="email" id="emailInput" required autocomplete="email">
 
@@ -438,6 +443,8 @@
   const cardTitle = document.getElementById('cardTitle');
   const cardSubtitle = document.getElementById('cardSubtitle');
   const authForm = document.getElementById('authForm');
+  const nombreField = document.getElementById('nombreField');
+  const nombreInput = document.getElementById('nombreInput');
   const emailInput = document.getElementById('emailInput');
   const passInput = document.getElementById('passInput');
   const submitBtn = document.getElementById('submitBtn');
@@ -491,6 +498,8 @@
     submitBtn.textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta';
     switchText.textContent = mode === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?';
     switchLink.textContent = mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión';
+    nombreField.style.display = mode === 'register' ? 'block' : 'none';
+    nombreInput.required = mode === 'register';
   }
 
   roleTabs.forEach(tab => {
@@ -528,15 +537,26 @@
     submitBtn.disabled = true;
     const email = emailInput.value.trim();
     const password = passInput.value;
+    const nombre = nombreInput.value.trim();
 
     try {
       if (mode === 'register') {
+        if (!nombre) {
+          showError('Escribe el nombre completo.');
+          submitBtn.disabled = false;
+          return;
+        }
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, 'usuarios', cred.user.uid), {
+        const datosUsuario = {
+          nombre: nombre,
           email: email,
           rol: currentRole,
           creado: serverTimestamp()
-        });
+        };
+        if (currentRole === 'profesor') {
+          datosUsuario.codigoProfesor = 'PROF-' + cred.user.uid.slice(0, 5).toUpperCase();
+        }
+        await setDoc(doc(db, 'usuarios', cred.user.uid), datosUsuario);
         // onAuthStateChanged se encarga de mostrar el panel
       } else {
         const cred = await signInWithEmailAndPassword(auth, email, password);
@@ -577,7 +597,7 @@
       li.style.gap = '10px';
 
       const opcionesProfesores = profesoresData.map(p =>
-        `<option value="${p.uid}" ${p.uid === curso.profesorUid ? 'selected' : ''}>${p.email}</option>`
+        `<option value="${p.uid}" ${p.uid === curso.profesorUid ? 'selected' : ''}>${p.nombre}${p.codigo ? ' — ' + p.codigo : ''}</option>`
       ).join('');
 
       li.innerHTML = `
@@ -618,12 +638,12 @@
         const cursoId = btn.dataset.cursoId;
         const select = document.querySelector(`.profesor-select[data-curso-id="${cursoId}"]`);
         const profesorUid = select.value;
-        const profesorEmail = select.options[select.selectedIndex]?.text || '';
+        const profesorNombre = select.options[select.selectedIndex]?.text || '';
         btn.disabled = true;
         try {
           await updateDoc(doc(db, 'cursos', cursoId), {
             profesorUid: profesorUid || null,
-            profesorEmail: profesorUid ? profesorEmail : null
+            profesorNombre: profesorUid ? profesorNombre : null
           });
           const status = document.querySelector(`.assign-status[data-status-for="${cursoId}"]`);
           status.style.display = 'block';
@@ -691,8 +711,58 @@
     if (empty) empty.style.display = 'none';
     lista.forEach((modulo, idx) => {
       const li = document.createElement('li');
-      li.style.cssText = 'padding:8px 10px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:13.5px;';
-      li.textContent = `${idx + 1}. ${modulo.nombre}`;
+      li.style.cssText = 'padding:8px 10px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:13.5px; display:flex; align-items:center; gap:8px;';
+      li.dataset.moduloId = modulo.id;
+
+      const span = document.createElement('span');
+      span.className = 'modulo-nombre-texto';
+      span.style.flex = '1';
+      span.textContent = `${idx + 1}. ${modulo.nombre}`;
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.title = 'Editar nombre';
+      editBtn.textContent = '✏️';
+      editBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:13px; padding:2px 4px;';
+
+      editBtn.addEventListener('click', () => {
+        li.innerHTML = '';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = modulo.nombre;
+        input.style.cssText = 'flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:13px;';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.textContent = 'Guardar';
+        saveBtn.style.cssText = 'padding:6px 10px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12px; font-weight:600; cursor:pointer;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.style.cssText = 'padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:12px; cursor:pointer;';
+
+        saveBtn.addEventListener('click', async () => {
+          const nuevoNombre = input.value.trim();
+          if (!nuevoNombre) return;
+          saveBtn.disabled = true;
+          try {
+            await updateDoc(doc(db, 'modulos', modulo.id), { nombre: nuevoNombre });
+          } catch (err) {
+            alert('No se pudo guardar el cambio. Intenta de nuevo.');
+            saveBtn.disabled = false;
+          }
+        });
+        cancelBtn.addEventListener('click', () => renderModulosList(cursoId));
+
+        li.appendChild(input);
+        li.appendChild(saveBtn);
+        li.appendChild(cancelBtn);
+        input.focus();
+      });
+
+      li.appendChild(span);
+      li.appendChild(editBtn);
       ul.appendChild(li);
     });
   }
@@ -720,7 +790,11 @@
 
     const qProfesores = query(collection(db, 'usuarios'), where('rol', '==', 'profesor'));
     onSnapshot(qProfesores, (snap) => {
-      profesoresData = snap.docs.map(d => ({ uid: d.id, email: d.data().email }));
+      profesoresData = snap.docs.map(d => ({
+        uid: d.id,
+        nombre: d.data().nombre || d.data().email,
+        codigo: d.data().codigoProfesor || ''
+      }));
       renderCourseList();
     });
 
@@ -792,7 +866,7 @@
     loginView.style.display = 'none';
     panelView.style.display = 'block';
     panelBadge.textContent = roleInfo[rol]?.label || rol;
-    panelTitle.textContent = `Bienvenido/a`;
+    panelTitle.textContent = `Bienvenido/a${snap.data().nombre ? ', ' + snap.data().nombre : ''}`;
 
     if (rol === 'administrador') {
       panelSubtitle.textContent = 'Administra los cursos de la plataforma.';
