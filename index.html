@@ -408,7 +408,7 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
-    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc
+    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // --- Configuración de tu proyecto de Firebase ---
@@ -601,9 +601,12 @@
       ).join('');
 
       li.innerHTML = `
-        <div>
-          <div class="course-name">${curso.nombre}</div>
-          <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div>
+            <div class="course-name">${curso.nombre}</div>
+            <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
+          </div>
+          <button type="button" class="delete-curso-btn" data-curso-id="${curso.id}" data-curso-nombre="${curso.nombre}" title="Eliminar curso" style="background:none; border:1px solid var(--line); border-radius:8px; color:var(--danger); font-size:12px; padding:6px 10px; cursor:pointer; white-space:nowrap;">🗑️ Eliminar</button>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <select class="profesor-select" data-curso-id="${curso.id}" style="flex:1; min-width:160px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; background:#fff;">
@@ -652,6 +655,36 @@
           alert('No se pudo guardar el profesor asignado. Intenta de nuevo.');
         } finally {
           btn.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.delete-curso-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cursoId = btn.dataset.cursoId;
+        const cursoNombre = btn.dataset.cursoNombre;
+        const confirmado = confirm(
+          `¿Seguro que quieres eliminar el curso "${cursoNombre}"?\n\nEsto también eliminará todos sus módulos, temas y subtemas. Esta acción no se puede deshacer.`
+        );
+        if (!confirmado) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Eliminando…';
+        try {
+          // Elimina primero los módulos asociados a este curso
+          const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
+          for (const moduloDoc of modulosSnap.docs) {
+            // (Cuando existan Temas y Subtemas, aquí se eliminarán también antes del módulo)
+            await deleteDoc(doc(db, 'modulos', moduloDoc.id));
+          }
+          // Luego elimina el curso
+          await deleteDoc(doc(db, 'cursos', cursoId));
+          modulosListenersActivos.delete(cursoId);
+          cursosExpandido.delete(cursoId);
+        } catch (err) {
+          alert('No se pudo eliminar el curso. Intenta de nuevo.');
+          btn.disabled = false;
+          btn.textContent = '🗑️ Eliminar';
         }
       });
     });
