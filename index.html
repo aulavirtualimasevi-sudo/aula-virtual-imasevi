@@ -420,7 +420,27 @@
     <h2 id="panelTitle">Bienvenido</h2>
     <p id="panelSubtitle">Tu panel se irá construyendo en los próximos pasos.</p>
 
+    <div class="admin-section" id="studentSection" style="display:none;">
+      <h3 id="studentCourseName">Curso</h3>
+      <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap;"></p>
+      <div id="studentVideoContainer"></div>
+      <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Comenzar</button>
+      <div id="studentContentPlaceholder" style="display:none; margin-top:16px; padding:16px; background:var(--paper); border:1px solid var(--line); border-radius:8px; text-align:center; font-size:13.5px; color:#5b6b87;">
+        Aquí vas a ver el contenido del curso (Tema 1 y siguientes) — lo estamos construyendo en los próximos pasos.
+      </div>
+    </div>
+
     <div class="admin-section" id="adminSection" style="display:none;">
+      <h3>🎬 Bienvenida general (aplica a todos los cursos)</h3>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:22px; padding-bottom:22px; border-bottom:1px solid var(--line);">
+        <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Mensaje de bienvenida</label>
+        <textarea id="bienvenidaMensajeInput" rows="6" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
+        <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Enlace del video tutorial (YouTube)</label>
+        <input type="text" id="bienvenidaVideoInput" placeholder="https://www.youtube.com/watch?v=..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
+        <button type="button" id="guardarBienvenidaBtn" style="align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar bienvenida</button>
+        <div id="bienvenidaStatus" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓ — ya se aplica a todos los cursos.</div>
+      </div>
+
       <h3>Cursos / Asignaturas</h3>
       <form class="course-form" id="courseForm">
         <div class="field">
@@ -528,6 +548,27 @@
   const googleCompleteBtn = document.getElementById('googleCompleteBtn');
   let googlePendingUser = null;
   const adminSection = document.getElementById('adminSection');
+  const studentSection = document.getElementById('studentSection');
+  const studentCourseName = document.getElementById('studentCourseName');
+  const studentWelcomeMsg = document.getElementById('studentWelcomeMsg');
+  const studentVideoContainer = document.getElementById('studentVideoContainer');
+  const studentBeginBtn = document.getElementById('studentBeginBtn');
+  const studentContentPlaceholder = document.getElementById('studentContentPlaceholder');
+  const bienvenidaMensajeInput = document.getElementById('bienvenidaMensajeInput');
+  const bienvenidaVideoInput = document.getElementById('bienvenidaVideoInput');
+  const guardarBienvenidaBtn = document.getElementById('guardarBienvenidaBtn');
+  const bienvenidaStatus = document.getElementById('bienvenidaStatus');
+
+  const MENSAJE_BIENVENIDA_POR_DEFECTO =
+`¡Bienvenido y bienvenida al Aula Virtual IMASEVI!
+
+Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este espacio ha sido diseñado para acompañarte en tu proceso formativo, brindándote las herramientas necesarias para una experiencia enriquecedora y cercana.
+
+Te invitamos a participar de manera activa, disciplinada y sincera durante todo el curso, aprovechando cada actividad como una oportunidad para crecer.
+
+Antes de comenzar, te recomendamos ver el video tutorial de uso de la plataforma, donde encontrarás una guía clara para navegar por el Aula Virtual y sacarle el mayor provecho.
+
+¡Éxitos en este camino! 🌟`;
   const courseForm = document.getElementById('courseForm');
   const courseName = document.getElementById('courseName');
   const courseHours = document.getElementById('courseHours');
@@ -626,6 +667,13 @@
   // El pasaporte es alfanumérico, sin un formato fijo
   function validarPasaporte(valor){
     return valor.trim().length >= 3;
+  }
+
+  // Extrae el ID de un video de YouTube a partir de distintos formatos de enlace
+  function extraerYoutubeId(url){
+    if (!url) return null;
+    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
   }
 
   function actualizarEtiquetaDocumento(selectEl, labelEl, inputEl){
@@ -1276,6 +1324,44 @@
     contenedor.appendChild(deleteBtn);
   }
 
+  // ---------- Bienvenida general (un solo documento, aplica a todos los cursos) ----------
+
+  let bienvenidaCargada = false;
+
+  async function cargarFormularioBienvenida(){
+    if (bienvenidaCargada) return;
+    bienvenidaCargada = true;
+    try {
+      const snap = await getDoc(doc(db, 'configuracion', 'bienvenida'));
+      if (snap.exists()) {
+        bienvenidaMensajeInput.value = snap.data().mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO;
+        bienvenidaVideoInput.value = snap.data().videoUrl || '';
+      } else {
+        bienvenidaMensajeInput.value = MENSAJE_BIENVENIDA_POR_DEFECTO;
+        bienvenidaVideoInput.value = '';
+      }
+    } catch (err) {
+      bienvenidaMensajeInput.value = MENSAJE_BIENVENIDA_POR_DEFECTO;
+    }
+  }
+
+  guardarBienvenidaBtn.addEventListener('click', async () => {
+    guardarBienvenidaBtn.disabled = true;
+    try {
+      await setDoc(doc(db, 'configuracion', 'bienvenida'), {
+        mensaje: bienvenidaMensajeInput.value.trim(),
+        videoUrl: bienvenidaVideoInput.value.trim(),
+        actualizado: serverTimestamp()
+      });
+      bienvenidaStatus.style.display = 'block';
+      setTimeout(() => { bienvenidaStatus.style.display = 'none'; }, 2500);
+    } catch (err) {
+      alert('No se pudo guardar la bienvenida. Intenta de nuevo.');
+    } finally {
+      guardarBienvenidaBtn.disabled = false;
+    }
+  });
+
   function iniciarListaCursos(){
     if (cursosListenerActivo) return;
     cursosListenerActivo = true;
@@ -1453,22 +1539,54 @@
       panelSubtitle.textContent = 'Administra los cursos de la plataforma.';
       adminSection.style.display = 'block';
       iniciarListaCursos();
+      cargarFormularioBienvenida();
     } else if (rol === 'estudiante') {
       adminSection.style.display = 'none';
       const cursoId = snap.data().cursoId;
       if (cursoId) {
         try {
           const cursoSnap = await getDoc(doc(db, 'cursos', cursoId));
-          panelSubtitle.textContent = cursoSnap.exists()
-            ? `Estás matriculado/a en: ${cursoSnap.data().nombre}`
-            : 'Tu curso ya no está disponible.';
+          if (cursoSnap.exists()) {
+            const curso = cursoSnap.data();
+            const bienvenidaSnap = await getDoc(doc(db, 'configuracion', 'bienvenida'));
+            const bienvenidaData = bienvenidaSnap.exists() ? bienvenidaSnap.data() : {};
+
+            panelSubtitle.style.display = 'none';
+            studentSection.style.display = 'block';
+            studentCourseName.textContent = curso.nombre;
+            studentWelcomeMsg.textContent = bienvenidaData.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO;
+
+            const youtubeId = extraerYoutubeId(bienvenidaData.videoUrl);
+            if (youtubeId) {
+              studentVideoContainer.innerHTML = `
+                <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:8px; overflow:hidden; margin-top:10px;">
+                  <iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>
+                </div>`;
+            } else if (bienvenidaData.videoUrl) {
+              studentVideoContainer.innerHTML = `<a href="${bienvenidaData.videoUrl}" target="_blank" rel="noopener" style="color:var(--teal); font-size:13px;">Ver video de bienvenida ↗</a>`;
+            } else {
+              studentVideoContainer.innerHTML = '';
+            }
+
+            studentContentPlaceholder.style.display = 'none';
+            studentBeginBtn.style.display = 'inline-block';
+          } else {
+            panelSubtitle.style.display = 'block';
+            panelSubtitle.textContent = 'Tu curso ya no está disponible.';
+            studentSection.style.display = 'none';
+          }
         } catch (err) {
+          panelSubtitle.style.display = 'block';
           panelSubtitle.textContent = 'Este es tu panel de Estudiante.';
+          studentSection.style.display = 'none';
         }
       } else {
+        panelSubtitle.style.display = 'block';
         panelSubtitle.textContent = 'Todavía no estás matriculado/a en ningún curso.';
+        studentSection.style.display = 'none';
       }
     } else {
+      panelSubtitle.style.display = 'block';
       panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío — lo iremos llenando en los próximos pasos.`;
       adminSection.style.display = 'none';
     }
