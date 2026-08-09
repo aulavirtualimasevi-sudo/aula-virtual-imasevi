@@ -709,7 +709,7 @@
           }
         }
         await setDoc(doc(db, 'usuarios', cred.user.uid), datosUsuario);
-        // onAuthStateChanged se encarga de mostrar el panel
+        await mostrarPanelSegunUsuario(cred.user.uid);
       } else {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         const snap = await getDoc(doc(db, 'usuarios', cred.user.uid));
@@ -1422,7 +1422,7 @@
         }
       }
       await setDoc(doc(db, 'usuarios', uid), datosUsuario);
-      // onAuthStateChanged se encarga de mostrar el panel
+      await mostrarPanelSegunUsuario(uid);
     } catch (err) {
       googleErrorMsg.textContent = 'No se pudo guardar. Intenta de nuevo.';
       googleErrorMsg.style.display = 'block';
@@ -1434,18 +1434,8 @@
     await signOut(auth);
   });
 
-  onAuthStateChanged(auth, async (user) => {
-    loadingScreen.style.display = 'none';
-
-    if (!user) {
-      panelView.style.display = 'none';
-      loginView.style.display = 'block';
-      submitBtn.disabled = false;
-      renderRoleUI();
-      return;
-    }
-
-    const snap = await getDoc(doc(db, 'usuarios', user.uid));
+  async function mostrarPanelSegunUsuario(uid){
+    const snap = await getDoc(doc(db, 'usuarios', uid));
     if (!snap.exists()) {
       // No debería pasar en flujo normal, pero por seguridad:
       loginView.style.display = 'block';
@@ -1482,6 +1472,20 @@
       panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío — lo iremos llenando en los próximos pasos.`;
       adminSection.style.display = 'none';
     }
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    loadingScreen.style.display = 'none';
+
+    if (!user) {
+      panelView.style.display = 'none';
+      loginView.style.display = 'block';
+      submitBtn.disabled = false;
+      renderRoleUI();
+      return;
+    }
+
+    await mostrarPanelSegunUsuario(user.uid);
   });
 </script>
 
