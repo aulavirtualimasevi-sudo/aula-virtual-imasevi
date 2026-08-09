@@ -702,12 +702,15 @@
     modulosListenersActivos.add(cursoId);
     const qModulos = query(
       collection(db, 'modulos'),
-      where('cursoId', '==', cursoId),
-      orderBy('orden', 'asc')
+      where('cursoId', '==', cursoId)
     );
     onSnapshot(qModulos, (snap) => {
-      modulosPorCurso[cursoId] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      modulosPorCurso[cursoId] = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
       renderModulosList(cursoId);
+    }, (err) => {
+      console.error('Error al leer módulos:', err);
     });
   }
 
