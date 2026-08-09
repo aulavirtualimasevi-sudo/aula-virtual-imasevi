@@ -584,6 +584,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   let subtemasPorTema = {};
   let subtemasExpandido = new Set();
   let subtemasListenersActivos = new Set();
+  let bloquesPorSubtema = {};
+  let bloquesListenersActivos = new Set();
 
   function clearMsgs(){
     errorMsg.style.display = 'none';
@@ -869,13 +871,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         btn.disabled = true;
         btn.textContent = 'Eliminando…';
         try {
-          // Elimina primero los módulos (y los temas y subtemas de cada uno) asociados a este curso
+          // Elimina primero los módulos (y los temas, subtemas y contenido de cada uno) asociados a este curso
           const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
           for (const moduloDoc of modulosSnap.docs) {
             const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', moduloDoc.id)));
             for (const temaDoc of temasSnap.docs) {
               const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaDoc.id)));
               for (const subtemaDoc of subtemasSnap.docs) {
+                await eliminarBloquesDeSubtema(subtemaDoc.id);
                 await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
               }
               await deleteDoc(doc(db, 'temas', temaDoc.id));
@@ -1044,13 +1047,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   }
 
   async function eliminarModulo(moduloId, moduloNombre){
-    const confirmado = confirm(`¿Eliminar el módulo "${moduloNombre}"?\n\nEsto también eliminará todos sus temas y subtemas. Esta acción no se puede deshacer.`);
+    const confirmado = confirm(`¿Eliminar el módulo "${moduloNombre}"?\n\nEsto también eliminará todos sus temas, subtemas y contenido. Esta acción no se puede deshacer.`);
     if (!confirmado) return;
     try {
       const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', moduloId)));
       for (const temaDoc of temasSnap.docs) {
         const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaDoc.id)));
         for (const subtemaDoc of subtemasSnap.docs) {
+          await eliminarBloquesDeSubtema(subtemaDoc.id);
           await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
         }
         await deleteDoc(doc(db, 'temas', temaDoc.id));
@@ -1167,11 +1171,12 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   }
 
   async function eliminarTema(temaId, temaNombre){
-    const confirmado = confirm(`¿Eliminar el tema "${temaNombre}"?\n\nEsto también eliminará todos sus subtemas. Esta acción no se puede deshacer.`);
+    const confirmado = confirm(`¿Eliminar el tema "${temaNombre}"?\n\nEsto también eliminará todos sus subtemas y su contenido. Esta acción no se puede deshacer.`);
     if (!confirmado) return;
     try {
       const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaId)));
       for (const subtemaDoc of subtemasSnap.docs) {
+        await eliminarBloquesDeSubtema(subtemaDoc.id);
         await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
       }
       await deleteDoc(doc(db, 'temas', temaId));
@@ -1215,22 +1220,183 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
     lista.forEach((subtema, idx) => {
       const li = document.createElement('li');
-      li.style.cssText = 'padding:6px 8px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:12px;';
-      renderNombreEditable(li, {
+      li.style.cssText = 'padding:8px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:12px; display:flex; flex-direction:column; gap:6px;';
+
+      const header = document.createElement('div');
+      renderNombreEditable(header, {
         texto: `${idx + 1}. ${subtema.nombre}`,
         valorActual: subtema.nombre,
         onGuardar: async (nuevoNombre) => updateDoc(doc(db, 'subtemas', subtema.id), { nombre: nuevoNombre }),
         onEliminar: () => eliminarSubtema(subtema.id, subtema.nombre)
       });
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.textContent = '📄 Contenido ▾';
+      toggleBtn.style.cssText = 'align-self:flex-start; padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11px; font-weight:600; cursor:pointer;';
+
+      const bloquesContainer = document.createElement('div');
+      bloquesContainer.dataset.bloquesFor = subtema.id;
+      bloquesContainer.style.cssText = 'display:none; padding:8px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
+      bloquesContainer.innerHTML = `
+        <form class="bloque-form" data-subtema-id="${subtema.id}" style="display:flex; flex-direction:column; gap:6px; margin-bottom:7px;">
+          <textarea class="bloque-texto-input" rows="3" placeholder="Escribe el texto de este bloque..." style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
+          <button type="submit" style="align-self:flex-start; padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Agregar bloque de texto</button>
+        </form>
+        <ul class="bloques-list" data-list-for="${subtema.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
+        <div class="bloques-empty" data-empty-for="${subtema.id}" style="font-size:11.5px; color:#8493ab; display:none;">Todavía no hay contenido en este subtema.</div>
+      `;
+
+      toggleBtn.addEventListener('click', () => {
+        const abierto = bloquesContainer.style.display === 'block';
+        bloquesContainer.style.display = abierto ? 'none' : 'block';
+        if (!abierto) ensureBloquesListener(subtema.id);
+      });
+
+      bloquesContainer.querySelector('.bloque-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const textarea = bloquesContainer.querySelector('.bloque-texto-input');
+        const contenido = textarea.value.trim();
+        if (!contenido) return;
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          const cantidadActual = (bloquesPorSubtema[subtema.id] || []).length;
+          await addDoc(collection(db, 'bloques'), {
+            subtemaId: subtema.id,
+            tipo: 'texto',
+            contenido: contenido,
+            orden: cantidadActual,
+            creado: serverTimestamp()
+          });
+          textarea.value = '';
+        } catch (err) {
+          alert('No se pudo agregar el bloque. Intenta de nuevo.');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      li.appendChild(header);
+      li.appendChild(toggleBtn);
+      li.appendChild(bloquesContainer);
       ul.appendChild(li);
     });
   }
 
+  function renderBloquesList(subtemaId){
+    const ul = document.querySelector(`.bloques-list[data-list-for="${subtemaId}"]`);
+    const empty = document.querySelector(`.bloques-empty[data-empty-for="${subtemaId}"]`);
+    if (!ul) return;
+    const lista = bloquesPorSubtema[subtemaId] || [];
+    ul.innerHTML = '';
+    if (lista.length === 0) {
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    lista.forEach((bloque, idx) => {
+      const li = document.createElement('li');
+      li.style.cssText = 'padding:7px 8px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:11.5px;';
+
+      const vista = document.createElement('div');
+      vista.style.cssText = 'display:flex; gap:6px; align-items:flex-start;';
+      const span = document.createElement('span');
+      span.style.cssText = 'flex:1; white-space:pre-wrap;';
+      span.textContent = `${idx + 1}. ${bloque.contenido}`;
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.textContent = '✏️';
+      editBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:12px; padding:2px 4px;';
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.textContent = '🗑️';
+      deleteBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:12px; padding:2px 4px;';
+      deleteBtn.addEventListener('click', async () => {
+        const confirmado = confirm('¿Eliminar este bloque de contenido? Esta acción no se puede deshacer.');
+        if (!confirmado) return;
+        try {
+          await deleteDoc(doc(db, 'bloques', bloque.id));
+        } catch (err) {
+          alert('No se pudo eliminar el bloque. Intenta de nuevo.');
+        }
+      });
+
+      editBtn.addEventListener('click', () => {
+        li.innerHTML = '';
+        const textarea = document.createElement('textarea');
+        textarea.rows = 3;
+        textarea.value = bloque.contenido;
+        textarea.style.cssText = 'width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:\'Inter\', sans-serif; resize:vertical; margin-bottom:6px;';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.textContent = 'Guardar';
+        saveBtn.style.cssText = 'padding:5px 9px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:11px; font-weight:600; cursor:pointer; margin-right:6px;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.style.cssText = 'padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:11px; cursor:pointer;';
+
+        saveBtn.addEventListener('click', async () => {
+          const nuevoContenido = textarea.value.trim();
+          if (!nuevoContenido) return;
+          saveBtn.disabled = true;
+          try {
+            await updateDoc(doc(db, 'bloques', bloque.id), { contenido: nuevoContenido });
+          } catch (err) {
+            alert('No se pudo guardar el cambio. Intenta de nuevo.');
+            saveBtn.disabled = false;
+          }
+        });
+        cancelBtn.addEventListener('click', () => renderBloquesList(subtemaId));
+
+        li.appendChild(textarea);
+        li.appendChild(saveBtn);
+        li.appendChild(cancelBtn);
+        textarea.focus();
+      });
+
+      vista.appendChild(span);
+      vista.appendChild(editBtn);
+      vista.appendChild(deleteBtn);
+      li.appendChild(vista);
+      ul.appendChild(li);
+    });
+  }
+
+  function ensureBloquesListener(subtemaId){
+    if (bloquesListenersActivos.has(subtemaId)) return;
+    bloquesListenersActivos.add(subtemaId);
+    const qBloques = query(collection(db, 'bloques'), where('subtemaId', '==', subtemaId));
+    onSnapshot(qBloques, (snap) => {
+      bloquesPorSubtema[subtemaId] = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+      renderBloquesList(subtemaId);
+    }, (err) => {
+      console.error('Error al leer bloques:', err);
+    });
+  }
+
+  async function eliminarBloquesDeSubtema(subtemaId){
+    const bloquesSnap = await getDocs(query(collection(db, 'bloques'), where('subtemaId', '==', subtemaId)));
+    for (const bloqueDoc of bloquesSnap.docs) {
+      await deleteDoc(doc(db, 'bloques', bloqueDoc.id));
+    }
+  }
+
   async function eliminarSubtema(subtemaId, subtemaNombre){
-    const confirmado = confirm(`¿Eliminar el subtema "${subtemaNombre}"? Esta acción no se puede deshacer.`);
+    const confirmado = confirm(`¿Eliminar el subtema "${subtemaNombre}"? Esto también eliminará todo su contenido. Esta acción no se puede deshacer.`);
     if (!confirmado) return;
     try {
+      await eliminarBloquesDeSubtema(subtemaId);
       await deleteDoc(doc(db, 'subtemas', subtemaId));
+      bloquesListenersActivos.delete(subtemaId);
     } catch (err) {
       alert('No se pudo eliminar el subtema. Intenta de nuevo.');
     }
