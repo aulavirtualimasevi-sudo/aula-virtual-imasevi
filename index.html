@@ -470,6 +470,9 @@
   let cursosExpandido = new Set();
   let modulosPorCurso = {};
   let modulosListenersActivos = new Set();
+  let temasPorModulo = {};
+  let temasExpandido = new Set();
+  let temasListenersActivos = new Set();
 
   function clearMsgs(){
     errorMsg.style.display = 'none';
@@ -671,10 +674,14 @@
         btn.disabled = true;
         btn.textContent = 'Eliminando…';
         try {
-          // Elimina primero los módulos asociados a este curso
+          // Elimina primero los módulos (y los temas de cada uno) asociados a este curso
           const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
           for (const moduloDoc of modulosSnap.docs) {
-            // (Cuando existan Temas y Subtemas, aquí se eliminarán también antes del módulo)
+            const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', moduloDoc.id)));
+            for (const temaDoc of temasSnap.docs) {
+              // (Cuando existan Subtemas, aquí se eliminarán también antes del tema)
+              await deleteDoc(doc(db, 'temas', temaDoc.id));
+            }
             await deleteDoc(doc(db, 'modulos', moduloDoc.id));
           }
           // Luego elimina el curso
@@ -742,62 +749,99 @@
       return;
     }
     if (empty) empty.style.display = 'none';
+
     lista.forEach((modulo, idx) => {
       const li = document.createElement('li');
-      li.style.cssText = 'padding:8px 10px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:13.5px; display:flex; align-items:center; gap:8px;';
+      li.style.cssText = 'padding:10px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:13.5px; display:flex; flex-direction:column; gap:8px;';
       li.dataset.moduloId = modulo.id;
 
-      const span = document.createElement('span');
-      span.className = 'modulo-nombre-texto';
-      span.style.flex = '1';
-      span.textContent = `${idx + 1}. ${modulo.nombre}`;
-
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.title = 'Editar nombre';
-      editBtn.textContent = '✏️';
-      editBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:13px; padding:2px 4px;';
-
-      editBtn.addEventListener('click', () => {
-        li.innerHTML = '';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = modulo.nombre;
-        input.style.cssText = 'flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:13px;';
-
-        const saveBtn = document.createElement('button');
-        saveBtn.type = 'button';
-        saveBtn.textContent = 'Guardar';
-        saveBtn.style.cssText = 'padding:6px 10px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12px; font-weight:600; cursor:pointer;';
-
-        const cancelBtn = document.createElement('button');
-        cancelBtn.type = 'button';
-        cancelBtn.textContent = 'Cancelar';
-        cancelBtn.style.cssText = 'padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:12px; cursor:pointer;';
-
-        saveBtn.addEventListener('click', async () => {
-          const nuevoNombre = input.value.trim();
-          if (!nuevoNombre) return;
-          saveBtn.disabled = true;
-          try {
-            await updateDoc(doc(db, 'modulos', modulo.id), { nombre: nuevoNombre });
-          } catch (err) {
-            alert('No se pudo guardar el cambio. Intenta de nuevo.');
-            saveBtn.disabled = false;
-          }
-        });
-        cancelBtn.addEventListener('click', () => renderModulosList(cursoId));
-
-        li.appendChild(input);
-        li.appendChild(saveBtn);
-        li.appendChild(cancelBtn);
-        input.focus();
+      const header = document.createElement('div');
+      header.className = 'modulo-header';
+      header.style.cssText = 'display:flex; align-items:center; gap:8px;';
+      renderNombreEditable(header, {
+        texto: `${idx + 1}. ${modulo.nombre}`,
+        valorActual: modulo.nombre,
+        onGuardar: async (nuevoNombre) => updateDoc(doc(db, 'modulos', modulo.id), { nombre: nuevoNombre }),
+        onEliminar: () => eliminarModulo(modulo.id, modulo.nombre)
       });
 
-      li.appendChild(span);
-      li.appendChild(editBtn);
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'toggle-temas-btn';
+      toggleBtn.textContent = 'Temas ▾';
+      toggleBtn.style.cssText = 'align-self:flex-start; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer;';
+
+      const temasContainer = document.createElement('div');
+      temasContainer.className = 'temas-container';
+      temasContainer.dataset.temasFor = modulo.id;
+      temasContainer.style.cssText = 'display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
+      temasContainer.innerHTML = `
+        <form class="tema-form" data-modulo-id="${modulo.id}" style="display:flex; gap:8px; margin-bottom:8px;">
+          <input type="text" class="tema-name-input" placeholder="Nombre del tema" required style="flex:1; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:12.5px;">
+          <button type="submit" style="padding:7px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:12px; font-weight:600; cursor:pointer;">Agregar</button>
+        </form>
+        <ul class="temas-list" data-list-for="${modulo.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
+        <div class="temas-empty" data-empty-for="${modulo.id}" style="font-size:12px; color:#8493ab; display:none;">Todavía no hay temas en este módulo.</div>
+      `;
+
+      toggleBtn.addEventListener('click', () => {
+        const abierto = temasContainer.style.display === 'block';
+        temasContainer.style.display = abierto ? 'none' : 'block';
+        if (abierto) { temasExpandido.delete(modulo.id); }
+        else { temasExpandido.add(modulo.id); ensureTemasListener(modulo.id); }
+      });
+
+      temasContainer.querySelector('.tema-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = temasContainer.querySelector('.tema-name-input');
+        const nombre = input.value.trim();
+        if (!nombre) return;
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          const cantidadActual = (temasPorModulo[modulo.id] || []).length;
+          await addDoc(collection(db, 'temas'), {
+            moduloId: modulo.id,
+            cursoId: cursoId,
+            nombre: nombre,
+            orden: cantidadActual,
+            creado: serverTimestamp()
+          });
+          input.value = '';
+        } catch (err) {
+          alert('No se pudo agregar el tema. Intenta de nuevo.');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      li.appendChild(header);
+      li.appendChild(toggleBtn);
+      li.appendChild(temasContainer);
       ul.appendChild(li);
+
+      if (temasExpandido.has(modulo.id)) {
+        temasContainer.style.display = 'block';
+        ensureTemasListener(modulo.id);
+      }
     });
+  }
+
+  async function eliminarModulo(moduloId, moduloNombre){
+    const confirmado = confirm(`¿Eliminar el módulo "${moduloNombre}"?\n\nEsto también eliminará todos sus temas y subtemas. Esta acción no se puede deshacer.`);
+    if (!confirmado) return;
+    try {
+      const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', moduloId)));
+      for (const temaDoc of temasSnap.docs) {
+        // (Cuando existan Subtemas, aquí se eliminarán también antes del tema)
+        await deleteDoc(doc(db, 'temas', temaDoc.id));
+      }
+      await deleteDoc(doc(db, 'modulos', moduloId));
+      temasListenersActivos.delete(moduloId);
+      temasExpandido.delete(moduloId);
+    } catch (err) {
+      alert('No se pudo eliminar el módulo. Intenta de nuevo.');
+    }
   }
 
   function ensureModulosListener(cursoId){
@@ -815,6 +859,128 @@
     }, (err) => {
       console.error('Error al leer módulos:', err);
     });
+  }
+
+  // ---------- Temas (dentro de cada módulo) ----------
+
+  function renderTemasList(moduloId){
+    const ul = document.querySelector(`.temas-list[data-list-for="${moduloId}"]`);
+    const empty = document.querySelector(`.temas-empty[data-empty-for="${moduloId}"]`);
+    if (!ul) return;
+    const lista = temasPorModulo[moduloId] || [];
+    ul.innerHTML = '';
+    if (lista.length === 0) {
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    lista.forEach((tema, idx) => {
+      const li = document.createElement('li');
+      li.style.cssText = 'padding:7px 9px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:12.5px;';
+      renderNombreEditable(li, {
+        texto: `${idx + 1}. ${tema.nombre}`,
+        valorActual: tema.nombre,
+        onGuardar: async (nuevoNombre) => updateDoc(doc(db, 'temas', tema.id), { nombre: nuevoNombre }),
+        onEliminar: () => eliminarTema(tema.id, tema.nombre)
+      });
+      ul.appendChild(li);
+    });
+  }
+
+  async function eliminarTema(temaId, temaNombre){
+    const confirmado = confirm(`¿Eliminar el tema "${temaNombre}"?\n\nEsto también eliminará todos sus subtemas. Esta acción no se puede deshacer.`);
+    if (!confirmado) return;
+    try {
+      // (Cuando existan Subtemas, aquí se eliminarán también antes del tema)
+      await deleteDoc(doc(db, 'temas', temaId));
+    } catch (err) {
+      alert('No se pudo eliminar el tema. Intenta de nuevo.');
+    }
+  }
+
+  function ensureTemasListener(moduloId){
+    if (temasListenersActivos.has(moduloId)) return;
+    temasListenersActivos.add(moduloId);
+    const qTemas = query(
+      collection(db, 'temas'),
+      where('moduloId', '==', moduloId)
+    );
+    onSnapshot(qTemas, (snap) => {
+      temasPorModulo[moduloId] = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+      renderTemasList(moduloId);
+    }, (err) => {
+      console.error('Error al leer temas:', err);
+    });
+  }
+
+  // ---------- Utilidad genérica: nombre editable con botones de editar/eliminar ----------
+  // Se usa para Módulos y Temas (y se reutilizará para Subtemas), para que los tres
+  // niveles se comporten exactamente igual.
+  function renderNombreEditable(contenedor, { texto, valorActual, onGuardar, onEliminar }){
+    contenedor.innerHTML = '';
+    contenedor.style.display = 'flex';
+    contenedor.style.alignItems = 'center';
+    contenedor.style.gap = '8px';
+
+    const span = document.createElement('span');
+    span.style.flex = '1';
+    span.textContent = texto;
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.title = 'Editar nombre';
+    editBtn.textContent = '✏️';
+    editBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:13px; padding:2px 4px;';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.title = 'Eliminar';
+    deleteBtn.textContent = '🗑️';
+    deleteBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:13px; padding:2px 4px;';
+    deleteBtn.addEventListener('click', onEliminar);
+
+    editBtn.addEventListener('click', () => {
+      contenedor.innerHTML = '';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = valorActual;
+      input.style.cssText = 'flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:13px;';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Guardar';
+      saveBtn.style.cssText = 'padding:6px 10px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12px; font-weight:600; cursor:pointer;';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.textContent = 'Cancelar';
+      cancelBtn.style.cssText = 'padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:12px; cursor:pointer;';
+
+      saveBtn.addEventListener('click', async () => {
+        const nuevoValor = input.value.trim();
+        if (!nuevoValor) return;
+        saveBtn.disabled = true;
+        try {
+          await onGuardar(nuevoValor);
+        } catch (err) {
+          alert('No se pudo guardar el cambio. Intenta de nuevo.');
+          saveBtn.disabled = false;
+        }
+      });
+      cancelBtn.addEventListener('click', () => renderNombreEditable(contenedor, { texto, valorActual, onGuardar, onEliminar }));
+
+      contenedor.appendChild(input);
+      contenedor.appendChild(saveBtn);
+      contenedor.appendChild(cancelBtn);
+      input.focus();
+    });
+
+    contenedor.appendChild(span);
+    contenedor.appendChild(editBtn);
+    contenedor.appendChild(deleteBtn);
   }
 
   function iniciarListaCursos(){
