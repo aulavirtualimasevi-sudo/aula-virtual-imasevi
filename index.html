@@ -351,8 +351,13 @@
         </div>
 
         <div id="cedulaField" style="display:none;">
-          <label for="cedulaInput">Número de cédula</label>
-          <input type="text" id="cedulaInput" placeholder="Ej. 8-731-1234 u 8-PE-731-1234">
+          <label for="tipoDocumentoSelect">Tipo de documento</label>
+          <select id="tipoDocumentoSelect" style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px; font-size:14.5px; font-family:'Inter', sans-serif; margin-bottom:16px; background:#fbfcfe;">
+            <option value="cedula">Cédula</option>
+            <option value="pasaporte">Pasaporte</option>
+          </select>
+          <label for="cedulaInput" id="cedulaInputLabel">Número de cédula</label>
+          <input type="text" id="cedulaInput" placeholder="Ej. 8-731-123 u 8-PE-731-123">
         </div>
 
         <label for="emailInput">Correo electrónico</label>
@@ -383,8 +388,13 @@
         <input type="text" id="googleNombreInput">
 
         <div id="googleCedulaField" style="display:none;">
-          <label for="googleCedulaInput">Número de cédula</label>
-          <input type="text" id="googleCedulaInput" placeholder="Ej. 8-731-1234 u 8-PE-731-1234">
+          <label for="googleTipoDocumentoSelect">Tipo de documento</label>
+          <select id="googleTipoDocumentoSelect" style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px; font-size:14.5px; font-family:'Inter', sans-serif; margin-bottom:16px; background:#fbfcfe;">
+            <option value="cedula">Cédula</option>
+            <option value="pasaporte">Pasaporte</option>
+          </select>
+          <label for="googleCedulaInput" id="googleCedulaInputLabel">Número de cédula</label>
+          <input type="text" id="googleCedulaInput" placeholder="Ej. 8-731-123 u 8-PE-731-123">
         </div>
 
         <div class="msg error" id="googleErrorMsg"></div>
@@ -493,6 +503,8 @@
   const nombreInput = document.getElementById('nombreInput');
   const cedulaField = document.getElementById('cedulaField');
   const cedulaInput = document.getElementById('cedulaInput');
+  const tipoDocumentoSelect = document.getElementById('tipoDocumentoSelect');
+  const cedulaInputLabel = document.getElementById('cedulaInputLabel');
   const emailInput = document.getElementById('emailInput');
   const passInput = document.getElementById('passInput');
   const submitBtn = document.getElementById('submitBtn');
@@ -510,6 +522,8 @@
   const googleNombreInput = document.getElementById('googleNombreInput');
   const googleCedulaField = document.getElementById('googleCedulaField');
   const googleCedulaInput = document.getElementById('googleCedulaInput');
+  const googleTipoDocumentoSelect = document.getElementById('googleTipoDocumentoSelect');
+  const googleCedulaInputLabel = document.getElementById('googleCedulaInputLabel');
   const googleErrorMsg = document.getElementById('googleErrorMsg');
   const googleCompleteBtn = document.getElementById('googleCompleteBtn');
   let googlePendingUser = null;
@@ -567,6 +581,9 @@
     const mostrarCedula = mode === 'register' && currentRole === 'estudiante';
     cedulaField.style.display = mostrarCedula ? 'block' : 'none';
     cedulaInput.required = mostrarCedula;
+    if (mostrarCedula) {
+      actualizarEtiquetaDocumento(tipoDocumentoSelect, cedulaInputLabel, cedulaInput);
+    }
 
     // Por si se venía del paso extra de "completar registro con Google"
     googleCompleteSection.style.display = 'none';
@@ -600,11 +617,33 @@
     renderRoleUI();
   });
 
-  // Formato: xx-xxx-xxxx  ó  xx-LETRA-xxx-xxxx (la letra es opcional)
+  // Formato: xx-xxx-xxx(x)  ó  xx-LETRA-xxx-xxx(x) (la letra es opcional; el último grupo acepta 3 o 4 dígitos)
   function validarCedula(valor){
-    const patron = /^\d{1,2}(-[A-Za-z]{1,3})?-\d{3}-\d{4}$/;
+    const patron = /^\d{1,2}(-[A-Za-z]{1,3})?-\d{3}-\d{3,4}$/;
     return patron.test(valor.trim());
   }
+
+  // El pasaporte es alfanumérico, sin un formato fijo
+  function validarPasaporte(valor){
+    return valor.trim().length >= 3;
+  }
+
+  function actualizarEtiquetaDocumento(selectEl, labelEl, inputEl){
+    if (selectEl.value === 'pasaporte') {
+      labelEl.textContent = 'Número de pasaporte';
+      inputEl.placeholder = 'Ej. AB123456';
+    } else {
+      labelEl.textContent = 'Número de cédula';
+      inputEl.placeholder = 'Ej. 8-731-123 u 8-PE-731-123';
+    }
+  }
+
+  tipoDocumentoSelect.addEventListener('change', () => {
+    actualizarEtiquetaDocumento(tipoDocumentoSelect, cedulaInputLabel, cedulaInput);
+  });
+  googleTipoDocumentoSelect.addEventListener('change', () => {
+    actualizarEtiquetaDocumento(googleTipoDocumentoSelect, googleCedulaInputLabel, googleCedulaInput);
+  });
 
   function traducirError(code){
     const mapa = {
@@ -635,13 +674,19 @@
           return;
         }
         if (currentRole === 'estudiante') {
+          const tipoDoc = tipoDocumentoSelect.value;
           if (!cedulaInput.value.trim()) {
-            showError('Escribe el número de cédula.');
+            showError(tipoDoc === 'pasaporte' ? 'Escribe el número de pasaporte.' : 'Escribe el número de cédula.');
             submitBtn.disabled = false;
             return;
           }
-          if (!validarCedula(cedulaInput.value)) {
-            showError('El formato de la cédula no es válido. Usa xx-xxx-xxxx o xx-LETRA-xxx-xxxx (ej. 8-731-1234 u 8-PE-731-1234).');
+          if (tipoDoc === 'cedula' && !validarCedula(cedulaInput.value)) {
+            showError('El formato de la cédula no es válido. Usa xx-xxx-xxx(x) o xx-LETRA-xxx-xxx(x) (ej. 8-731-123 u 8-PE-731-123).');
+            submitBtn.disabled = false;
+            return;
+          }
+          if (tipoDoc === 'pasaporte' && !validarPasaporte(cedulaInput.value)) {
+            showError('Escribe un número de pasaporte válido.');
             submitBtn.disabled = false;
             return;
           }
@@ -657,7 +702,8 @@
           datosUsuario.codigoProfesor = 'PROF-' + cred.user.uid.slice(0, 5).toUpperCase();
         }
         if (currentRole === 'estudiante') {
-          datosUsuario.cedula = cedulaInput.value.trim();
+          datosUsuario.tipoDocumento = tipoDocumentoSelect.value;
+          datosUsuario.numeroDocumento = cedulaInput.value.trim();
           if (cursoInvitacionId) {
             datosUsuario.cursoId = cursoInvitacionId;
           }
@@ -1296,10 +1342,13 @@
 
       if (!snap.exists()) {
         // Primera vez que entra: pedimos nombre (y cédula si es Estudiante) antes de guardar
+        // El nombre queda intencionalmente vacío: no se toma automático de la cuenta de Google
         googlePendingUser = cred.user;
-        googleNombreInput.value = cred.user.displayName || '';
+        googleNombreInput.value = '';
         googleCedulaField.style.display = currentRole === 'estudiante' ? 'block' : 'none';
         googleCedulaInput.value = '';
+        googleTipoDocumentoSelect.value = 'cedula';
+        actualizarEtiquetaDocumento(googleTipoDocumentoSelect, googleCedulaInputLabel, googleCedulaInput);
         authForm.style.display = 'none';
         googleBtn.style.display = 'none';
         document.querySelector('.switch-mode').style.display = 'none';
@@ -1335,13 +1384,19 @@
       return;
     }
     if (currentRole === 'estudiante') {
+      const tipoDoc = googleTipoDocumentoSelect.value;
       if (!googleCedulaInput.value.trim()) {
-        googleErrorMsg.textContent = 'Escribe el número de cédula.';
+        googleErrorMsg.textContent = tipoDoc === 'pasaporte' ? 'Escribe el número de pasaporte.' : 'Escribe el número de cédula.';
         googleErrorMsg.style.display = 'block';
         return;
       }
-      if (!validarCedula(googleCedulaInput.value)) {
-        googleErrorMsg.textContent = 'El formato de la cédula no es válido. Usa xx-xxx-xxxx o xx-LETRA-xxx-xxxx.';
+      if (tipoDoc === 'cedula' && !validarCedula(googleCedulaInput.value)) {
+        googleErrorMsg.textContent = 'El formato de la cédula no es válido. Usa xx-xxx-xxx(x) o xx-LETRA-xxx-xxx(x).';
+        googleErrorMsg.style.display = 'block';
+        return;
+      }
+      if (tipoDoc === 'pasaporte' && !validarPasaporte(googleCedulaInput.value)) {
+        googleErrorMsg.textContent = 'Escribe un número de pasaporte válido.';
         googleErrorMsg.style.display = 'block';
         return;
       }
@@ -1360,7 +1415,8 @@
         datosUsuario.codigoProfesor = 'PROF-' + uid.slice(0, 5).toUpperCase();
       }
       if (currentRole === 'estudiante') {
-        datosUsuario.cedula = googleCedulaInput.value.trim();
+        datosUsuario.tipoDocumento = googleTipoDocumentoSelect.value;
+        datosUsuario.numeroDocumento = googleCedulaInput.value.trim();
         if (cursoInvitacionId) {
           datosUsuario.cursoId = cursoInvitacionId;
         }
