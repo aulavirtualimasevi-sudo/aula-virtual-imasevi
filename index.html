@@ -320,7 +320,7 @@
 
   <!-- ---------- Vista de login ---------- -->
   <div id="loginView" style="display:none;">
-    <div class="role-tabs">
+    <div class="role-tabs" id="roleTabsContainer">
       <div class="role-tab active" data-role="administrador">
         <div class="role-icon">A</div>
         <div class="role-label">Administrador</div>
@@ -334,6 +334,8 @@
         <div class="role-label">Estudiante</div>
       </div>
     </div>
+
+    <div class="msg info" id="cursoInviteBanner" style="display:none; text-align:center; font-weight:600;"></div>
 
     <div class="card">
       <h2 id="cardTitle">Acceso Administrador</h2>
@@ -435,11 +437,22 @@
   let currentRole = "administrador";
   let mode = "login"; // "login" | "register"
 
+  // --- Detectar si se entró por un enlace de invitación a un curso ---
+  const parametrosURL = new URLSearchParams(window.location.search);
+  const cursoInvitacionId = parametrosURL.get('curso');
+  const cursoInvitacionNombre = parametrosURL.get('nombre');
+  if (cursoInvitacionId) {
+    currentRole = 'estudiante';
+    mode = 'register';
+  }
+
   // --- Elementos ---
   const loadingScreen = document.getElementById('loadingScreen');
   const loginView = document.getElementById('loginView');
   const panelView = document.getElementById('panelView');
   const roleTabs = document.querySelectorAll('.role-tab');
+  const roleTabsContainer = document.getElementById('roleTabsContainer');
+  const cursoInviteBanner = document.getElementById('cursoInviteBanner');
   const cardTitle = document.getElementById('cardTitle');
   const cardSubtitle = document.getElementById('cardSubtitle');
   const authForm = document.getElementById('authForm');
@@ -500,12 +513,20 @@
       : `Crear cuenta — ${roleInfo[currentRole].label}`;
     cardSubtitle.textContent = mode === 'login'
       ? 'Inicia sesión con tu correo y contraseña.'
-      : 'Crea una cuenta de prueba con este rol.';
+      : (cursoInvitacionId ? 'Completa tus datos para matricularte.' : 'Crea una cuenta de prueba con este rol.');
     submitBtn.textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta';
     switchText.textContent = mode === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?';
     switchLink.textContent = mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión';
     nombreField.style.display = mode === 'register' ? 'block' : 'none';
     nombreInput.required = mode === 'register';
+
+    if (cursoInvitacionId) {
+      roleTabsContainer.style.display = 'none';
+      cursoInviteBanner.style.display = 'block';
+      cursoInviteBanner.textContent = cursoInvitacionNombre
+        ? `Te estás inscribiendo en: ${cursoInvitacionNombre}`
+        : 'Te estás inscribiendo a un curso.';
+    }
   }
 
   roleTabs.forEach(tab => {
@@ -561,6 +582,9 @@
         };
         if (currentRole === 'profesor') {
           datosUsuario.codigoProfesor = 'PROF-' + cred.user.uid.slice(0, 5).toUpperCase();
+        }
+        if (currentRole === 'estudiante' && cursoInvitacionId) {
+          datosUsuario.cursoId = cursoInvitacionId;
         }
         await setDoc(doc(db, 'usuarios', cred.user.uid), datosUsuario);
         // onAuthStateChanged se encarga de mostrar el panel
@@ -624,6 +648,8 @@
         <div class="assign-status" data-status-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none;">Profesor asignado ✓</div>
 
         <button type="button" class="toggle-modulos-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">Módulos ▾</button>
+        <button type="button" class="link-curso-btn" data-curso-id="${curso.id}" data-curso-nombre="${curso.nombre}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--amber-deep); border-radius:8px; background:#fff; color:var(--amber-deep); font-size:12.5px; font-weight:600; cursor:pointer;">🔗 Generar enlace para estudiantes</button>
+        <div class="link-status" data-linkstatus-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none; word-break:break-all;"></div>
 
         <div class="modulos-container" data-modulos-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;">
           <form class="modulo-form" data-curso-id="${curso.id}" style="display:flex; gap:8px; margin-bottom:10px;">
@@ -699,6 +725,24 @@
           btn.disabled = false;
           btn.textContent = '🗑️ Eliminar';
         }
+      });
+    });
+
+    document.querySelectorAll('.link-curso-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cursoId = btn.dataset.cursoId;
+        const cursoNombre = btn.dataset.cursoNombre;
+        const enlace = `${window.location.origin}${window.location.pathname}?curso=${encodeURIComponent(cursoId)}&nombre=${encodeURIComponent(cursoNombre)}`;
+        const status = document.querySelector(`.link-status[data-linkstatus-for="${cursoId}"]`);
+
+        try {
+          await navigator.clipboard.writeText(enlace);
+          status.textContent = `Enlace copiado: ${enlace}`;
+        } catch (err) {
+          // Si el navegador no permite copiar automáticamente, mostramos el enlace para copiarlo a mano
+          status.textContent = `Copia este enlace: ${enlace}`;
+        }
+        status.style.display = 'block';
       });
     });
 
@@ -1177,6 +1221,7 @@
       panelView.style.display = 'none';
       loginView.style.display = 'block';
       submitBtn.disabled = false;
+      renderRoleUI();
       return;
     }
 
@@ -1198,6 +1243,21 @@
       panelSubtitle.textContent = 'Administra los cursos de la plataforma.';
       adminSection.style.display = 'block';
       iniciarListaCursos();
+    } else if (rol === 'estudiante') {
+      adminSection.style.display = 'none';
+      const cursoId = snap.data().cursoId;
+      if (cursoId) {
+        try {
+          const cursoSnap = await getDoc(doc(db, 'cursos', cursoId));
+          panelSubtitle.textContent = cursoSnap.exists()
+            ? `Estás matriculado/a en: ${cursoSnap.data().nombre}`
+            : 'Tu curso ya no está disponible.';
+        } catch (err) {
+          panelSubtitle.textContent = 'Este es tu panel de Estudiante.';
+        }
+      } else {
+        panelSubtitle.textContent = 'Todavía no estás matriculado/a en ningún curso.';
+      }
     } else {
       panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío — lo iremos llenando en los próximos pasos.`;
       adminSection.style.display = 'none';
