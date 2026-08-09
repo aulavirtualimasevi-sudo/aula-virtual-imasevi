@@ -350,6 +350,11 @@
           <input type="text" id="nombreInput" autocomplete="name">
         </div>
 
+        <div id="cedulaField" style="display:none;">
+          <label for="cedulaInput">Número de cédula</label>
+          <input type="text" id="cedulaInput" placeholder="Ej. 8-731-1234 u 8-PE-731-1234">
+        </div>
+
         <label for="emailInput">Correo electrónico</label>
         <input type="email" id="emailInput" required autocomplete="email">
 
@@ -358,6 +363,34 @@
 
         <button type="submit" class="primary" id="submitBtn">Iniciar sesión</button>
       </form>
+
+      <div style="display:flex; align-items:center; gap:10px; margin:16px 0;">
+        <div style="flex:1; height:1px; background:var(--line);"></div>
+        <span style="font-size:11.5px; color:#8493ab;">O</span>
+        <div style="flex:1; height:1px; background:var(--line);"></div>
+      </div>
+
+      <button type="button" id="googleBtn" style="width:100%; padding:11px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px;">
+        <svg width="17" height="17" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-1.9 14.3-5.1l-6.6-5.6C29.6 35.3 26.9 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.6 5.1C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.3-4 5.8l6.6 5.6C41.3 35.9 44 30.4 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+        Continuar con Google
+      </button>
+
+      <!-- Se muestra solo la primera vez que alguien entra con una cuenta de Google nueva -->
+      <div id="googleCompleteSection" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--line);">
+        <p style="font-size:13px; color:#5b6b87; margin:0 0 14px;">Ya iniciaste sesión con Google. Completa estos datos para terminar tu registro:</p>
+
+        <label for="googleNombreInput">Nombre completo</label>
+        <input type="text" id="googleNombreInput">
+
+        <div id="googleCedulaField" style="display:none;">
+          <label for="googleCedulaInput">Número de cédula</label>
+          <input type="text" id="googleCedulaInput" placeholder="Ej. 8-731-1234 u 8-PE-731-1234">
+        </div>
+
+        <div class="msg error" id="googleErrorMsg"></div>
+
+        <button type="button" class="primary" id="googleCompleteBtn">Guardar y continuar</button>
+      </div>
 
       <div class="switch-mode">
         <span id="switchText">¿No tienes cuenta?</span>
@@ -406,7 +439,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-    createUserWithEmailAndPassword, signOut
+    createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
@@ -458,6 +491,8 @@
   const authForm = document.getElementById('authForm');
   const nombreField = document.getElementById('nombreField');
   const nombreInput = document.getElementById('nombreInput');
+  const cedulaField = document.getElementById('cedulaField');
+  const cedulaInput = document.getElementById('cedulaInput');
   const emailInput = document.getElementById('emailInput');
   const passInput = document.getElementById('passInput');
   const submitBtn = document.getElementById('submitBtn');
@@ -469,6 +504,15 @@
   const panelTitle = document.getElementById('panelTitle');
   const panelSubtitle = document.getElementById('panelSubtitle');
   const logoutBtn = document.getElementById('logoutBtn');
+  const googleBtn = document.getElementById('googleBtn');
+  const googleProvider = new GoogleAuthProvider();
+  const googleCompleteSection = document.getElementById('googleCompleteSection');
+  const googleNombreInput = document.getElementById('googleNombreInput');
+  const googleCedulaField = document.getElementById('googleCedulaField');
+  const googleCedulaInput = document.getElementById('googleCedulaInput');
+  const googleErrorMsg = document.getElementById('googleErrorMsg');
+  const googleCompleteBtn = document.getElementById('googleCompleteBtn');
+  let googlePendingUser = null;
   const adminSection = document.getElementById('adminSection');
   const courseForm = document.getElementById('courseForm');
   const courseName = document.getElementById('courseName');
@@ -520,6 +564,17 @@
     nombreField.style.display = mode === 'register' ? 'block' : 'none';
     nombreInput.required = mode === 'register';
 
+    const mostrarCedula = mode === 'register' && currentRole === 'estudiante';
+    cedulaField.style.display = mostrarCedula ? 'block' : 'none';
+    cedulaInput.required = mostrarCedula;
+
+    // Por si se venía del paso extra de "completar registro con Google"
+    googleCompleteSection.style.display = 'none';
+    authForm.style.display = 'block';
+    googleBtn.style.display = 'flex';
+    document.querySelector('.switch-mode').style.display = 'block';
+    document.querySelector('.test-note').style.display = 'block';
+
     if (cursoInvitacionId) {
       roleTabsContainer.style.display = 'none';
       cursoInviteBanner.style.display = 'block';
@@ -544,6 +599,12 @@
     clearMsgs();
     renderRoleUI();
   });
+
+  // Formato: xx-xxx-xxxx  ó  xx-LETRA-xxx-xxxx (la letra es opcional)
+  function validarCedula(valor){
+    const patron = /^\d{1,2}(-[A-Za-z]{1,3})?-\d{3}-\d{4}$/;
+    return patron.test(valor.trim());
+  }
 
   function traducirError(code){
     const mapa = {
@@ -573,6 +634,18 @@
           submitBtn.disabled = false;
           return;
         }
+        if (currentRole === 'estudiante') {
+          if (!cedulaInput.value.trim()) {
+            showError('Escribe el número de cédula.');
+            submitBtn.disabled = false;
+            return;
+          }
+          if (!validarCedula(cedulaInput.value)) {
+            showError('El formato de la cédula no es válido. Usa xx-xxx-xxxx o xx-LETRA-xxx-xxxx (ej. 8-731-1234 u 8-PE-731-1234).');
+            submitBtn.disabled = false;
+            return;
+          }
+        }
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         const datosUsuario = {
           nombre: nombre,
@@ -583,8 +656,11 @@
         if (currentRole === 'profesor') {
           datosUsuario.codigoProfesor = 'PROF-' + cred.user.uid.slice(0, 5).toUpperCase();
         }
-        if (currentRole === 'estudiante' && cursoInvitacionId) {
-          datosUsuario.cursoId = cursoInvitacionId;
+        if (currentRole === 'estudiante') {
+          datosUsuario.cedula = cedulaInput.value.trim();
+          if (cursoInvitacionId) {
+            datosUsuario.cursoId = cursoInvitacionId;
+          }
         }
         await setDoc(doc(db, 'usuarios', cred.user.uid), datosUsuario);
         // onAuthStateChanged se encarga de mostrar el panel
@@ -1207,6 +1283,94 @@
       courseErrorMsg.style.display = 'block';
     } finally {
       courseSubmitBtn.disabled = false;
+    }
+  });
+
+  googleBtn.addEventListener('click', async () => {
+    clearMsgs();
+    googleBtn.disabled = true;
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      const uid = cred.user.uid;
+      const snap = await getDoc(doc(db, 'usuarios', uid));
+
+      if (!snap.exists()) {
+        // Primera vez que entra: pedimos nombre (y cédula si es Estudiante) antes de guardar
+        googlePendingUser = cred.user;
+        googleNombreInput.value = cred.user.displayName || '';
+        googleCedulaField.style.display = currentRole === 'estudiante' ? 'block' : 'none';
+        googleCedulaInput.value = '';
+        authForm.style.display = 'none';
+        googleBtn.style.display = 'none';
+        document.querySelector('.switch-mode').style.display = 'none';
+        document.querySelector('.test-note').style.display = 'none';
+        googleCompleteSection.style.display = 'block';
+        googleBtn.disabled = false;
+      } else {
+        const rolReal = snap.data().rol;
+        if (rolReal !== currentRole) {
+          await signOut(auth);
+          showError(`Esta cuenta está registrada como "${roleInfo[rolReal]?.label || rolReal}", no como "${roleInfo[currentRole].label}". Entra por la pestaña correcta.`);
+          googleBtn.disabled = false;
+          return;
+        }
+        googleBtn.disabled = false;
+        // onAuthStateChanged se encarga de mostrar el panel
+      }
+    } catch (err) {
+      if (err.code !== 'auth/popup-closed-by-user') {
+        showError('No se pudo iniciar sesión con Google. Intenta de nuevo.');
+      }
+      googleBtn.disabled = false;
+    }
+  });
+
+  googleCompleteBtn.addEventListener('click', async () => {
+    googleErrorMsg.style.display = 'none';
+    const nombreGoogle = googleNombreInput.value.trim();
+
+    if (!nombreGoogle) {
+      googleErrorMsg.textContent = 'Escribe el nombre completo.';
+      googleErrorMsg.style.display = 'block';
+      return;
+    }
+    if (currentRole === 'estudiante') {
+      if (!googleCedulaInput.value.trim()) {
+        googleErrorMsg.textContent = 'Escribe el número de cédula.';
+        googleErrorMsg.style.display = 'block';
+        return;
+      }
+      if (!validarCedula(googleCedulaInput.value)) {
+        googleErrorMsg.textContent = 'El formato de la cédula no es válido. Usa xx-xxx-xxxx o xx-LETRA-xxx-xxxx.';
+        googleErrorMsg.style.display = 'block';
+        return;
+      }
+    }
+
+    googleCompleteBtn.disabled = true;
+    try {
+      const uid = googlePendingUser.uid;
+      const datosUsuario = {
+        nombre: nombreGoogle,
+        email: googlePendingUser.email || '',
+        rol: currentRole,
+        creado: serverTimestamp()
+      };
+      if (currentRole === 'profesor') {
+        datosUsuario.codigoProfesor = 'PROF-' + uid.slice(0, 5).toUpperCase();
+      }
+      if (currentRole === 'estudiante') {
+        datosUsuario.cedula = googleCedulaInput.value.trim();
+        if (cursoInvitacionId) {
+          datosUsuario.cursoId = cursoInvitacionId;
+        }
+      }
+      await setDoc(doc(db, 'usuarios', uid), datosUsuario);
+      // onAuthStateChanged se encarga de mostrar el panel
+    } catch (err) {
+      googleErrorMsg.textContent = 'No se pudo guardar. Intenta de nuevo.';
+      googleErrorMsg.style.display = 'block';
+      googleCompleteBtn.disabled = false;
     }
   });
 
