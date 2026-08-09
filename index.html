@@ -460,6 +460,9 @@
   let cursosListenerActivo = false;
   let cursosData = [];
   let profesoresData = [];
+  let cursosExpandido = new Set();
+  let modulosPorCurso = {};
+  let modulosListenersActivos = new Set();
 
   function clearMsgs(){
     errorMsg.style.display = 'none';
@@ -590,8 +593,24 @@
           <button type="button" class="assign-btn" data-curso-id="${curso.id}" style="padding:9px 14px; border:none; border-radius:8px; background:var(--teal); color:#fff; font-size:13px; font-weight:600; cursor:pointer;">Guardar</button>
         </div>
         <div class="assign-status" data-status-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none;">Profesor asignado ✓</div>
+
+        <button type="button" class="toggle-modulos-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">Módulos ▾</button>
+
+        <div class="modulos-container" data-modulos-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;">
+          <form class="modulo-form" data-curso-id="${curso.id}" style="display:flex; gap:8px; margin-bottom:10px;">
+            <input type="text" class="modulo-name-input" placeholder="Nombre del módulo" required style="flex:1; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
+            <button type="submit" style="padding:8px 12px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Agregar</button>
+          </form>
+          <ul class="modulos-list" data-list-for="${curso.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
+          <div class="modulos-empty" data-empty-for="${curso.id}" style="font-size:12.5px; color:#8493ab; display:none;">Todavía no hay módulos en este curso.</div>
+        </div>
       `;
       courseList.appendChild(li);
+
+      if (cursosExpandido.has(curso.id)) {
+        li.querySelector('.modulos-container').style.display = 'block';
+        ensureModulosListener(curso.id);
+      }
     });
 
     document.querySelectorAll('.assign-btn').forEach(btn => {
@@ -615,6 +634,80 @@
           btn.disabled = false;
         }
       });
+    });
+
+    document.querySelectorAll('.toggle-modulos-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cursoId = btn.dataset.cursoId;
+        const container = document.querySelector(`.modulos-container[data-modulos-for="${cursoId}"]`);
+        const abierto = container.style.display === 'block';
+        container.style.display = abierto ? 'none' : 'block';
+        if (abierto) {
+          cursosExpandido.delete(cursoId);
+        } else {
+          cursosExpandido.add(cursoId);
+          ensureModulosListener(cursoId);
+        }
+      });
+    });
+
+    document.querySelectorAll('.modulo-form').forEach(form => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const cursoId = form.dataset.cursoId;
+        const input = form.querySelector('.modulo-name-input');
+        const nombre = input.value.trim();
+        if (!nombre) return;
+        const btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          const cantidadActual = (modulosPorCurso[cursoId] || []).length;
+          await addDoc(collection(db, 'modulos'), {
+            cursoId: cursoId,
+            nombre: nombre,
+            orden: cantidadActual,
+            creado: serverTimestamp()
+          });
+          input.value = '';
+        } catch (err) {
+          alert('No se pudo agregar el módulo. Intenta de nuevo.');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function renderModulosList(cursoId){
+    const ul = document.querySelector(`.modulos-list[data-list-for="${cursoId}"]`);
+    const empty = document.querySelector(`.modulos-empty[data-empty-for="${cursoId}"]`);
+    if (!ul) return;
+    const lista = modulosPorCurso[cursoId] || [];
+    ul.innerHTML = '';
+    if (lista.length === 0) {
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    lista.forEach((modulo, idx) => {
+      const li = document.createElement('li');
+      li.style.cssText = 'padding:8px 10px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:13.5px;';
+      li.textContent = `${idx + 1}. ${modulo.nombre}`;
+      ul.appendChild(li);
+    });
+  }
+
+  function ensureModulosListener(cursoId){
+    if (modulosListenersActivos.has(cursoId)) return;
+    modulosListenersActivos.add(cursoId);
+    const qModulos = query(
+      collection(db, 'modulos'),
+      where('cursoId', '==', cursoId),
+      orderBy('orden', 'asc')
+    );
+    onSnapshot(qModulos, (snap) => {
+      modulosPorCurso[cursoId] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderModulosList(cursoId);
     });
   }
 
