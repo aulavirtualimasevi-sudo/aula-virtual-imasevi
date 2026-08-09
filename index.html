@@ -473,6 +473,9 @@
   let temasPorModulo = {};
   let temasExpandido = new Set();
   let temasListenersActivos = new Set();
+  let subtemasPorTema = {};
+  let subtemasExpandido = new Set();
+  let subtemasListenersActivos = new Set();
 
   function clearMsgs(){
     errorMsg.style.display = 'none';
@@ -674,12 +677,15 @@
         btn.disabled = true;
         btn.textContent = 'Eliminando…';
         try {
-          // Elimina primero los módulos (y los temas de cada uno) asociados a este curso
+          // Elimina primero los módulos (y los temas y subtemas de cada uno) asociados a este curso
           const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
           for (const moduloDoc of modulosSnap.docs) {
             const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', moduloDoc.id)));
             for (const temaDoc of temasSnap.docs) {
-              // (Cuando existan Subtemas, aquí se eliminarán también antes del tema)
+              const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaDoc.id)));
+              for (const subtemaDoc of subtemasSnap.docs) {
+                await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
+              }
               await deleteDoc(doc(db, 'temas', temaDoc.id));
             }
             await deleteDoc(doc(db, 'modulos', moduloDoc.id));
@@ -833,7 +839,10 @@
     try {
       const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', moduloId)));
       for (const temaDoc of temasSnap.docs) {
-        // (Cuando existan Subtemas, aquí se eliminarán también antes del tema)
+        const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaDoc.id)));
+        for (const subtemaDoc of subtemasSnap.docs) {
+          await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
+        }
         await deleteDoc(doc(db, 'temas', temaDoc.id));
       }
       await deleteDoc(doc(db, 'modulos', moduloId));
@@ -877,14 +886,73 @@
 
     lista.forEach((tema, idx) => {
       const li = document.createElement('li');
-      li.style.cssText = 'padding:7px 9px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:12.5px;';
-      renderNombreEditable(li, {
+      li.style.cssText = 'padding:9px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:12.5px; display:flex; flex-direction:column; gap:7px;';
+
+      const header = document.createElement('div');
+      renderNombreEditable(header, {
         texto: `${idx + 1}. ${tema.nombre}`,
         valorActual: tema.nombre,
         onGuardar: async (nuevoNombre) => updateDoc(doc(db, 'temas', tema.id), { nombre: nuevoNombre }),
         onEliminar: () => eliminarTema(tema.id, tema.nombre)
       });
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.textContent = 'Subtemas ▾';
+      toggleBtn.style.cssText = 'align-self:flex-start; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;';
+
+      const subtemasContainer = document.createElement('div');
+      subtemasContainer.dataset.subtemasFor = tema.id;
+      subtemasContainer.style.cssText = 'display:none; padding:9px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
+      subtemasContainer.innerHTML = `
+        <form class="subtema-form" data-tema-id="${tema.id}" style="display:flex; gap:6px; margin-bottom:7px;">
+          <input type="text" class="subtema-name-input" placeholder="Nombre del subtema" required style="flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
+          <button type="submit" style="padding:6px 9px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Agregar</button>
+        </form>
+        <ul class="subtemas-list" data-list-for="${tema.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;"></ul>
+        <div class="subtemas-empty" data-empty-for="${tema.id}" style="font-size:11.5px; color:#8493ab; display:none;">Todavía no hay subtemas en este tema.</div>
+      `;
+
+      toggleBtn.addEventListener('click', () => {
+        const abierto = subtemasContainer.style.display === 'block';
+        subtemasContainer.style.display = abierto ? 'none' : 'block';
+        if (abierto) { subtemasExpandido.delete(tema.id); }
+        else { subtemasExpandido.add(tema.id); ensureSubtemasListener(tema.id); }
+      });
+
+      subtemasContainer.querySelector('.subtema-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = subtemasContainer.querySelector('.subtema-name-input');
+        const nombre = input.value.trim();
+        if (!nombre) return;
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          const cantidadActual = (subtemasPorTema[tema.id] || []).length;
+          await addDoc(collection(db, 'subtemas'), {
+            temaId: tema.id,
+            moduloId: moduloId,
+            nombre: nombre,
+            orden: cantidadActual,
+            creado: serverTimestamp()
+          });
+          input.value = '';
+        } catch (err) {
+          alert('No se pudo agregar el subtema. Intenta de nuevo.');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      li.appendChild(header);
+      li.appendChild(toggleBtn);
+      li.appendChild(subtemasContainer);
       ul.appendChild(li);
+
+      if (subtemasExpandido.has(tema.id)) {
+        subtemasContainer.style.display = 'block';
+        ensureSubtemasListener(tema.id);
+      }
     });
   }
 
@@ -892,8 +960,13 @@
     const confirmado = confirm(`¿Eliminar el tema "${temaNombre}"?\n\nEsto también eliminará todos sus subtemas. Esta acción no se puede deshacer.`);
     if (!confirmado) return;
     try {
-      // (Cuando existan Subtemas, aquí se eliminarán también antes del tema)
+      const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaId)));
+      for (const subtemaDoc of subtemasSnap.docs) {
+        await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
+      }
       await deleteDoc(doc(db, 'temas', temaId));
+      subtemasListenersActivos.delete(temaId);
+      subtemasExpandido.delete(temaId);
     } catch (err) {
       alert('No se pudo eliminar el tema. Intenta de nuevo.');
     }
@@ -913,6 +986,60 @@
       renderTemasList(moduloId);
     }, (err) => {
       console.error('Error al leer temas:', err);
+    });
+  }
+
+  // ---------- Subtemas (dentro de cada tema) ----------
+
+  function renderSubtemasList(temaId){
+    const ul = document.querySelector(`.subtemas-list[data-list-for="${temaId}"]`);
+    const empty = document.querySelector(`.subtemas-empty[data-empty-for="${temaId}"]`);
+    if (!ul) return;
+    const lista = subtemasPorTema[temaId] || [];
+    ul.innerHTML = '';
+    if (lista.length === 0) {
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    lista.forEach((subtema, idx) => {
+      const li = document.createElement('li');
+      li.style.cssText = 'padding:6px 8px; background:#fff; border:1px solid var(--line); border-radius:6px; font-size:12px;';
+      renderNombreEditable(li, {
+        texto: `${idx + 1}. ${subtema.nombre}`,
+        valorActual: subtema.nombre,
+        onGuardar: async (nuevoNombre) => updateDoc(doc(db, 'subtemas', subtema.id), { nombre: nuevoNombre }),
+        onEliminar: () => eliminarSubtema(subtema.id, subtema.nombre)
+      });
+      ul.appendChild(li);
+    });
+  }
+
+  async function eliminarSubtema(subtemaId, subtemaNombre){
+    const confirmado = confirm(`¿Eliminar el subtema "${subtemaNombre}"? Esta acción no se puede deshacer.`);
+    if (!confirmado) return;
+    try {
+      await deleteDoc(doc(db, 'subtemas', subtemaId));
+    } catch (err) {
+      alert('No se pudo eliminar el subtema. Intenta de nuevo.');
+    }
+  }
+
+  function ensureSubtemasListener(temaId){
+    if (subtemasListenersActivos.has(temaId)) return;
+    subtemasListenersActivos.add(temaId);
+    const qSubtemas = query(
+      collection(db, 'subtemas'),
+      where('temaId', '==', temaId)
+    );
+    onSnapshot(qSubtemas, (snap) => {
+      subtemasPorTema[temaId] = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+      renderSubtemasList(temaId);
+    }, (err) => {
+      console.error('Error al leer subtemas:', err);
     });
   }
 
