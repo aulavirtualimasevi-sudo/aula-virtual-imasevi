@@ -448,8 +448,14 @@
       <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify;"></p>
       <div id="studentVideoContainer"></div>
       <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Comenzar</button>
-      <div id="studentContentPlaceholder" style="display:none; margin-top:16px; padding:16px; background:var(--paper); border:1px solid var(--line); border-radius:8px; text-align:center; font-size:13.5px; color:#5b6b87;">
-        Aquí vas a ver el contenido del curso (Tema 1 y siguientes) — lo estamos construyendo en los próximos pasos.
+      <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
+        <div id="contenidoBreadcrumb" style="font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;"></div>
+        <div id="contenidoBody" style="padding:18px; background:var(--paper); border:1px solid var(--line); border-radius:10px; min-height:120px; font-size:14px; color:var(--ink); white-space:pre-wrap;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+          <button type="button" id="contenidoAnteriorBtn" style="padding:9px 16px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;">← Anterior</button>
+          <span id="contenidoPosicion" style="font-size:12px; color:#8493ab;"></span>
+          <button type="button" id="contenidoSiguienteBtn" style="padding:9px 16px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; cursor:pointer;">Siguiente →</button>
+        </div>
       </div>
     </div>
 
@@ -577,6 +583,14 @@
   const studentVideoContainer = document.getElementById('studentVideoContainer');
   const studentBeginBtn = document.getElementById('studentBeginBtn');
   const studentContentPlaceholder = document.getElementById('studentContentPlaceholder');
+  const contenidoBreadcrumb = document.getElementById('contenidoBreadcrumb');
+  const contenidoBody = document.getElementById('contenidoBody');
+  const contenidoAnteriorBtn = document.getElementById('contenidoAnteriorBtn');
+  const contenidoSiguienteBtn = document.getElementById('contenidoSiguienteBtn');
+  const contenidoPosicion = document.getElementById('contenidoPosicion');
+  let contenidoFlat = [];
+  let contenidoIndex = 0;
+  let estudianteCursoIdActual = null;
   const bienvenidaMensajeInput = document.getElementById('bienvenidaMensajeInput');
   const bienvenidaVideoInput = document.getElementById('bienvenidaVideoInput');
   const guardarBienvenidaBtn = document.getElementById('guardarBienvenidaBtn');
@@ -1468,6 +1482,113 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     }
   }
 
+  // ---------- Visor de contenido del Estudiante (Siguiente / Anterior) ----------
+
+  function ordenarPorCampoOrden(lista){
+    return lista.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  }
+
+  async function cargarContenidoDelCurso(cursoId){
+    const flat = [];
+    const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
+    const modulos = ordenarPorCampoOrden(modulosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+    for (const modulo of modulos) {
+      const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', modulo.id)));
+      const temas = ordenarPorCampoOrden(temasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      for (const tema of temas) {
+        const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', tema.id)));
+        const subtemas = ordenarPorCampoOrden(subtemasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        for (const subtema of subtemas) {
+          const bloquesSnap = await getDocs(query(collection(db, 'bloques'), where('subtemaId', '==', subtema.id)));
+          const bloques = ordenarPorCampoOrden(bloquesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+          for (const bloque of bloques) {
+            flat.push({
+              moduloNombre: modulo.nombre,
+              temaNombre: tema.nombre,
+              subtemaNombre: subtema.nombre,
+              bloque: bloque
+            });
+          }
+        }
+      }
+    }
+    return flat;
+  }
+
+  function renderContenidoActual(){
+    if (contenidoFlat.length === 0) {
+      contenidoBreadcrumb.textContent = '';
+      contenidoBody.style.whiteSpace = 'normal';
+      contenidoBody.innerHTML = 'Este curso todavía no tiene contenido publicado. Vuelve a revisar más adelante.';
+      contenidoPosicion.textContent = '';
+      contenidoAnteriorBtn.style.display = 'none';
+      contenidoSiguienteBtn.style.display = 'none';
+      return;
+    }
+
+    const item = contenidoFlat[contenidoIndex];
+    contenidoBreadcrumb.textContent = `${item.moduloNombre} › ${item.temaNombre} › ${item.subtemaNombre}`;
+    contenidoPosicion.textContent = `${contenidoIndex + 1} de ${contenidoFlat.length}`;
+
+    if (item.bloque.tipo === 'video') {
+      contenidoBody.style.whiteSpace = 'normal';
+      const youtubeId = extraerYoutubeId(item.bloque.contenido);
+      if (youtubeId) {
+        contenidoBody.innerHTML = `
+          <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:8px; overflow:hidden;">
+            <iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>
+          </div>`;
+      } else {
+        contenidoBody.innerHTML = `<a href="${item.bloque.contenido}" target="_blank" rel="noopener" style="color:var(--teal);">Ver video ↗</a>`;
+      }
+    } else {
+      contenidoBody.style.whiteSpace = 'pre-wrap';
+      contenidoBody.textContent = item.bloque.contenido;
+    }
+
+    contenidoAnteriorBtn.style.display = 'inline-block';
+    contenidoSiguienteBtn.style.display = 'inline-block';
+    contenidoAnteriorBtn.disabled = contenidoIndex === 0;
+    contenidoAnteriorBtn.style.opacity = contenidoIndex === 0 ? '0.4' : '1';
+    contenidoSiguienteBtn.textContent = contenidoIndex === contenidoFlat.length - 1 ? 'Finalizar ✓' : 'Siguiente →';
+  }
+
+  studentBeginBtn.addEventListener('click', async () => {
+    if (!estudianteCursoIdActual) return;
+    studentBeginBtn.disabled = true;
+    studentBeginBtn.textContent = 'Cargando...';
+    try {
+      contenidoFlat = await cargarContenidoDelCurso(estudianteCursoIdActual);
+      contenidoIndex = 0;
+      studentContentPlaceholder.style.display = 'block';
+      renderContenidoActual();
+      studentBeginBtn.style.display = 'none';
+    } catch (err) {
+      alert('No se pudo cargar el contenido del curso. Intenta de nuevo.');
+    } finally {
+      studentBeginBtn.disabled = false;
+      studentBeginBtn.textContent = 'Comenzar';
+    }
+  });
+
+  contenidoAnteriorBtn.addEventListener('click', () => {
+    if (contenidoIndex > 0) {
+      contenidoIndex -= 1;
+      renderContenidoActual();
+    }
+  });
+
+  contenidoSiguienteBtn.addEventListener('click', () => {
+    if (contenidoIndex < contenidoFlat.length - 1) {
+      contenidoIndex += 1;
+      renderContenidoActual();
+    }
+  });
+
   async function eliminarSubtema(subtemaId, subtemaNombre){
     const confirmado = confirm(`¿Eliminar el subtema "${subtemaNombre}"? Esto también eliminará todo su contenido. Esta acción no se puede deshacer.`);
     if (!confirmado) return;
@@ -1810,6 +1931,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
             studentContentPlaceholder.style.display = 'none';
             studentBeginBtn.style.display = 'inline-block';
+            estudianteCursoIdActual = cursoId;
           } else {
             panelSubtitle.style.display = 'block';
             panelSubtitle.textContent = 'Tu curso ya no está disponible.';
