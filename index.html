@@ -444,10 +444,12 @@
     <p id="panelSubtitle">Tu panel se irá construyendo en los próximos pasos.</p>
 
     <div class="admin-section" id="studentSection" style="display:none;">
-      <h3 id="studentCourseName">Curso</h3>
-      <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify;"></p>
-      <div id="studentVideoContainer"></div>
-      <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Comenzar</button>
+      <div id="studentWelcomeBlock">
+        <h3 id="studentCourseName">Curso</h3>
+        <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify;"></p>
+        <div id="studentVideoContainer"></div>
+        <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Iniciar curso</button>
+      </div>
       <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
           <div style="flex:1; height:6px; background:var(--line); border-radius:999px; overflow:hidden;">
@@ -603,6 +605,7 @@
   const studentWelcomeMsg = document.getElementById('studentWelcomeMsg');
   const studentVideoContainer = document.getElementById('studentVideoContainer');
   const studentBeginBtn = document.getElementById('studentBeginBtn');
+  const studentWelcomeBlock = document.getElementById('studentWelcomeBlock');
   const studentContentPlaceholder = document.getElementById('studentContentPlaceholder');
   const contenidoBreadcrumb = document.getElementById('contenidoBreadcrumb');
   const contenidoBody = document.getElementById('contenidoBody');
@@ -1640,12 +1643,17 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       contenidoIndex = 0;
       studentContentPlaceholder.style.display = 'block';
       renderContenidoActual();
-      studentBeginBtn.style.display = 'none';
+      // Se oculta toda la bienvenida (nombre del curso, mensaje, video y este botón)
+      // y también el encabezado genérico del panel, para dejar solo el contenido del curso
+      studentWelcomeBlock.style.display = 'none';
+      panelBadge.style.display = 'none';
+      panelTitle.style.display = 'none';
+      studentSection.style.borderTop = 'none';
+      studentSection.style.paddingTop = '0';
     } catch (err) {
       alert('No se pudo cargar el contenido del curso. Intenta de nuevo.');
-    } finally {
       studentBeginBtn.disabled = false;
-      studentBeginBtn.textContent = 'Comenzar';
+      studentBeginBtn.textContent = 'Iniciar curso';
     }
   });
 
@@ -1963,6 +1971,15 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   });
 
   async function mostrarPanelSegunUsuario(uid){
+    // Restaura el encabezado y la bienvenida por si quedaron ocultos de una sesión anterior
+    panelBadge.style.display = 'block';
+    panelTitle.style.display = 'block';
+    studentWelcomeBlock.style.display = 'block';
+    studentSection.style.borderTop = '';
+    studentSection.style.paddingTop = '';
+    studentBeginBtn.disabled = false;
+    studentBeginBtn.textContent = 'Iniciar curso';
+
     const snap = await getDoc(doc(db, 'usuarios', uid));
     if (!snap.exists()) {
       // No debería pasar en flujo normal, pero por seguridad:
