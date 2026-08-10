@@ -449,11 +449,32 @@
       <div id="studentVideoContainer"></div>
       <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Comenzar</button>
       <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
-        <div id="contenidoBreadcrumb" style="font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;"></div>
-        <div id="contenidoBody" style="padding:18px; background:var(--paper); border:1px solid var(--line); border-radius:10px; min-height:120px; font-size:14px; color:var(--ink); white-space:pre-wrap;"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+          <div style="flex:1; height:6px; background:var(--line); border-radius:999px; overflow:hidden;">
+            <div id="contenidoProgresoBarra" style="height:100%; width:0%; background:var(--amber); border-radius:999px; transition:width .25s ease;"></div>
+          </div>
+          <span id="contenidoPosicion" style="font-size:11.5px; color:#8493ab; white-space:nowrap;"></span>
+        </div>
+
+        <div id="contenidoViewer">
+          <div id="contenidoSeccionIntro" style="display:none; text-align:center; padding:22px 16px; background:var(--ink); border-radius:10px; margin-bottom:14px;">
+            <div style="font-size:10.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--amber); margin-bottom:6px;" id="contenidoSeccionEtiqueta"></div>
+            <div style="font-family:'Source Serif 4', serif; font-size:19px; color:#fff;" id="contenidoSeccionTitulo"></div>
+          </div>
+
+          <div id="contenidoBreadcrumb" style="font-size:11px; font-weight:600; color:var(--ink-soft); margin-bottom:10px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+          <div id="contenidoBody" style="padding:22px; background:var(--paper-card); border:1px solid var(--line); border-radius:12px; min-height:140px; font-size:15px; line-height:1.65; color:var(--ink); box-shadow:0 4px 14px rgba(22,35,61,0.05);"></div>
+        </div>
+
+        <div id="contenidoFinal" style="display:none; text-align:center; padding:36px 20px; background:var(--paper-card); border:1px solid var(--line); border-radius:12px;">
+          <div style="font-size:32px; margin-bottom:8px;">🎉</div>
+          <h3 style="font-family:'Source Serif 4', serif; margin:0 0 8px; color:var(--ink);">¡Completaste el recorrido!</h3>
+          <p style="font-size:13.5px; color:#5b6b87; margin:0 0 18px;">Revisaste todo el contenido disponible de este curso.</p>
+          <button type="button" id="contenidoVolverInicioBtn" style="padding:10px 18px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;">Volver al principio</button>
+        </div>
+
+        <div id="contenidoNavBar" style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;">
           <button type="button" id="contenidoAnteriorBtn" style="padding:9px 16px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;">← Anterior</button>
-          <span id="contenidoPosicion" style="font-size:12px; color:#8493ab;"></span>
           <button type="button" id="contenidoSiguienteBtn" style="padding:9px 16px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; cursor:pointer;">Siguiente →</button>
         </div>
       </div>
@@ -588,6 +609,14 @@
   const contenidoAnteriorBtn = document.getElementById('contenidoAnteriorBtn');
   const contenidoSiguienteBtn = document.getElementById('contenidoSiguienteBtn');
   const contenidoPosicion = document.getElementById('contenidoPosicion');
+  const contenidoProgresoBarra = document.getElementById('contenidoProgresoBarra');
+  const contenidoViewer = document.getElementById('contenidoViewer');
+  const contenidoFinal = document.getElementById('contenidoFinal');
+  const contenidoNavBar = document.getElementById('contenidoNavBar');
+  const contenidoSeccionIntro = document.getElementById('contenidoSeccionIntro');
+  const contenidoSeccionEtiqueta = document.getElementById('contenidoSeccionEtiqueta');
+  const contenidoSeccionTitulo = document.getElementById('contenidoSeccionTitulo');
+  const contenidoVolverInicioBtn = document.getElementById('contenidoVolverInicioBtn');
   let contenidoFlat = [];
   let contenidoIndex = 0;
   let estudianteCursoIdActual = null;
@@ -707,8 +736,32 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   // Extrae el ID de un video de YouTube a partir de distintos formatos de enlace
   function extraerYoutubeId(url){
     if (!url) return null;
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/);
     return match ? match[1] : null;
+  }
+
+  function extraerDriveEmbed(url){
+    if (!url) return null;
+    const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    return match ? `https://drive.google.com/file/d/${match[1]}/preview` : null;
+  }
+
+  // Devuelve el HTML del reproductor incrustado para un enlace de video (YouTube o Google Drive),
+  // o null si el enlace no se pudo reconocer (para mostrar un aviso, nunca un enlace externo)
+  function construirVisorDeVideo(url){
+    const youtubeId = extraerYoutubeId(url);
+    if (youtubeId) {
+      return `<div style="position:relative; padding-bottom:56.25%; height:0; border-radius:8px; overflow:hidden;">
+        <iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>
+      </div>`;
+    }
+    const driveEmbed = extraerDriveEmbed(url);
+    if (driveEmbed) {
+      return `<div style="position:relative; padding-bottom:56.25%; height:0; border-radius:8px; overflow:hidden;">
+        <iframe src="${driveEmbed}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allow="autoplay"></iframe>
+      </div>`;
+    }
+    return null;
   }
 
   function actualizarEtiquetaDocumento(selectEl, labelEl, inputEl){
@@ -1282,7 +1335,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             <option value="video">🎬 Bloque de video (enlace)</option>
           </select>
           <textarea class="bloque-texto-input" rows="3" placeholder="Escribe el texto de este bloque..." style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
-          <input type="text" class="bloque-video-input" placeholder="https://www.youtube.com/watch?v=..." style="display:none; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
+          <input type="text" class="bloque-video-input" placeholder="Enlace de YouTube o Google Drive" style="display:none; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
+          <p class="bloque-video-ayuda" style="display:none; font-size:10.5px; color:#8493ab; margin:0;">💡 ¿Tienes el video descargado (sin enlace)? Súbelo a Google Drive (gratis), compártelo como "Cualquier persona con el enlace" y pega ese enlace aquí.</p>
           <button type="submit" class="bloque-submit-btn" style="align-self:flex-start; padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Agregar bloque de texto</button>
         </form>
         <ul class="bloques-list" data-list-for="${subtema.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
@@ -1294,14 +1348,18 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       const videoInput = bloquesContainer.querySelector('.bloque-video-input');
       const submitBtnBloque = bloquesContainer.querySelector('.bloque-submit-btn');
 
+      const videoAyuda = bloquesContainer.querySelector('.bloque-video-ayuda');
+
       tipoSelect.addEventListener('change', () => {
         if (tipoSelect.value === 'video') {
           textoInput.style.display = 'none';
           videoInput.style.display = 'block';
+          videoAyuda.style.display = 'block';
           submitBtnBloque.textContent = 'Agregar bloque de video';
         } else {
           textoInput.style.display = 'block';
           videoInput.style.display = 'none';
+          videoAyuda.style.display = 'none';
           submitBtnBloque.textContent = 'Agregar bloque de texto';
         }
       });
@@ -1372,20 +1430,16 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       contenidoWrap.appendChild(etiqueta);
 
       if (bloque.tipo === 'video') {
-        const youtubeId = extraerYoutubeId(bloque.contenido);
-        if (youtubeId) {
+        const visorHtml = construirVisorDeVideo(bloque.contenido);
+        if (visorHtml) {
           const videoWrap = document.createElement('div');
-          videoWrap.style.cssText = 'position:relative; padding-bottom:56.25%; height:0; border-radius:6px; overflow:hidden;';
-          videoWrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>`;
+          videoWrap.innerHTML = visorHtml;
           contenidoWrap.appendChild(videoWrap);
         } else {
-          const enlace = document.createElement('a');
-          enlace.href = bloque.contenido;
-          enlace.target = '_blank';
-          enlace.rel = 'noopener';
-          enlace.style.cssText = 'color:var(--teal);';
-          enlace.textContent = 'Ver video ↗';
-          contenidoWrap.appendChild(enlace);
+          const aviso = document.createElement('span');
+          aviso.style.cssText = 'color:var(--danger);';
+          aviso.textContent = 'No se pudo reconocer este enlace como YouTube o Google Drive. Revísalo.';
+          contenidoWrap.appendChild(aviso);
         }
       } else {
         const span = document.createElement('span');
@@ -1520,41 +1574,61 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   }
 
   function renderContenidoActual(){
+    contenidoFinal.style.display = 'none';
+    contenidoViewer.style.display = 'block';
+    contenidoNavBar.style.display = 'flex';
+
     if (contenidoFlat.length === 0) {
-      contenidoBreadcrumb.textContent = '';
-      contenidoBody.style.whiteSpace = 'normal';
+      contenidoSeccionIntro.style.display = 'none';
+      contenidoBreadcrumb.innerHTML = '';
       contenidoBody.innerHTML = 'Este curso todavía no tiene contenido publicado. Vuelve a revisar más adelante.';
       contenidoPosicion.textContent = '';
-      contenidoAnteriorBtn.style.display = 'none';
-      contenidoSiguienteBtn.style.display = 'none';
+      contenidoProgresoBarra.style.width = '0%';
+      contenidoNavBar.style.display = 'none';
       return;
     }
 
     const item = contenidoFlat[contenidoIndex];
-    contenidoBreadcrumb.textContent = `${item.moduloNombre} › ${item.temaNombre} › ${item.subtemaNombre}`;
-    contenidoPosicion.textContent = `${contenidoIndex + 1} de ${contenidoFlat.length}`;
+    const itemAnterior = contenidoIndex > 0 ? contenidoFlat[contenidoIndex - 1] : null;
+    const esInicioDeSubtema = !itemAnterior || itemAnterior.subtemaNombre !== item.subtemaNombre;
 
-    if (item.bloque.tipo === 'video') {
-      contenidoBody.style.whiteSpace = 'normal';
-      const youtubeId = extraerYoutubeId(item.bloque.contenido);
-      if (youtubeId) {
-        contenidoBody.innerHTML = `
-          <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:8px; overflow:hidden;">
-            <iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>
-          </div>`;
-      } else {
-        contenidoBody.innerHTML = `<a href="${item.bloque.contenido}" target="_blank" rel="noopener" style="color:var(--teal);">Ver video ↗</a>`;
-      }
+    // Barra de progreso y contador
+    const porcentaje = Math.round(((contenidoIndex + 1) / contenidoFlat.length) * 100);
+    contenidoProgresoBarra.style.width = `${porcentaje}%`;
+    contenidoPosicion.textContent = `${contenidoIndex + 1} / ${contenidoFlat.length}`;
+
+    // Encabezado de sección: solo se muestra al entrar a un Subtema nuevo, para dar sentido de avance
+    if (esInicioDeSubtema) {
+      contenidoSeccionIntro.style.display = 'block';
+      contenidoSeccionEtiqueta.textContent = `${item.moduloNombre} · ${item.temaNombre}`;
+      contenidoSeccionTitulo.textContent = item.subtemaNombre;
     } else {
-      contenidoBody.style.whiteSpace = 'pre-wrap';
-      contenidoBody.textContent = item.bloque.contenido;
+      contenidoSeccionIntro.style.display = 'none';
     }
 
-    contenidoAnteriorBtn.style.display = 'inline-block';
-    contenidoSiguienteBtn.style.display = 'inline-block';
+    // Ruta tipo "chips" (más visual que texto plano)
+    contenidoBreadcrumb.innerHTML = [item.moduloNombre, item.temaNombre, item.subtemaNombre]
+      .map(t => `<span style="background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:3px 10px;">${t}</span>`)
+      .join('<span style="color:#c3cbda;">→</span>');
+
+    if (item.bloque.tipo === 'video') {
+      const visorHtml = construirVisorDeVideo(item.bloque.contenido);
+      contenidoBody.innerHTML = visorHtml || '<span style="color:var(--danger);">Este enlace de video no se pudo reconocer.</span>';
+    } else {
+      contenidoBody.innerHTML = `<div style="white-space:pre-wrap;">${item.bloque.contenido}</div>`;
+    }
+
     contenidoAnteriorBtn.disabled = contenidoIndex === 0;
     contenidoAnteriorBtn.style.opacity = contenidoIndex === 0 ? '0.4' : '1';
     contenidoSiguienteBtn.textContent = contenidoIndex === contenidoFlat.length - 1 ? 'Finalizar ✓' : 'Siguiente →';
+  }
+
+  function mostrarPantallaFinal(){
+    contenidoViewer.style.display = 'none';
+    contenidoNavBar.style.display = 'none';
+    contenidoFinal.style.display = 'block';
+    contenidoProgresoBarra.style.width = '100%';
+    contenidoPosicion.textContent = `${contenidoFlat.length} / ${contenidoFlat.length}`;
   }
 
   studentBeginBtn.addEventListener('click', async () => {
@@ -1586,7 +1660,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     if (contenidoIndex < contenidoFlat.length - 1) {
       contenidoIndex += 1;
       renderContenidoActual();
+    } else {
+      mostrarPantallaFinal();
     }
+  });
+
+  contenidoVolverInicioBtn.addEventListener('click', () => {
+    contenidoIndex = 0;
+    renderContenidoActual();
   });
 
   async function eliminarSubtema(subtemaId, subtemaNombre){
@@ -1917,14 +1998,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             studentCourseName.textContent = curso.nombre;
             studentWelcomeMsg.textContent = bienvenidaData.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO;
 
-            const youtubeId = extraerYoutubeId(bienvenidaData.videoUrl);
-            if (youtubeId) {
-              studentVideoContainer.innerHTML = `
-                <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:8px; overflow:hidden; margin-top:10px;">
-                  <iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>
-                </div>`;
+            const visorBienvenidaHtml = construirVisorDeVideo(bienvenidaData.videoUrl);
+            if (visorBienvenidaHtml) {
+              studentVideoContainer.innerHTML = `<div style="margin-top:10px;">${visorBienvenidaHtml}</div>`;
             } else if (bienvenidaData.videoUrl) {
-              studentVideoContainer.innerHTML = `<a href="${bienvenidaData.videoUrl}" target="_blank" rel="noopener" style="color:var(--teal); font-size:13px;">Ver video de bienvenida ↗</a>`;
+              studentVideoContainer.innerHTML = `<p style="color:var(--danger); font-size:12.5px;">El enlace del video no se pudo reconocer (usa YouTube o Google Drive).</p>`;
             } else {
               studentVideoContainer.innerHTML = '';
             }
