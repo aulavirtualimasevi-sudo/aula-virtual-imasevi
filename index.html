@@ -1263,12 +1263,34 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       bloquesContainer.style.cssText = 'display:none; padding:8px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
       bloquesContainer.innerHTML = `
         <form class="bloque-form" data-subtema-id="${subtema.id}" style="display:flex; flex-direction:column; gap:6px; margin-bottom:7px;">
+          <select class="bloque-tipo-select" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; background:#fff;">
+            <option value="texto">📄 Bloque de texto</option>
+            <option value="video">🎬 Bloque de video (enlace)</option>
+          </select>
           <textarea class="bloque-texto-input" rows="3" placeholder="Escribe el texto de este bloque..." style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
-          <button type="submit" style="align-self:flex-start; padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Agregar bloque de texto</button>
+          <input type="text" class="bloque-video-input" placeholder="https://www.youtube.com/watch?v=..." style="display:none; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
+          <button type="submit" class="bloque-submit-btn" style="align-self:flex-start; padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Agregar bloque de texto</button>
         </form>
         <ul class="bloques-list" data-list-for="${subtema.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
         <div class="bloques-empty" data-empty-for="${subtema.id}" style="font-size:11.5px; color:#8493ab; display:none;">Todavía no hay contenido en este subtema.</div>
       `;
+
+      const tipoSelect = bloquesContainer.querySelector('.bloque-tipo-select');
+      const textoInput = bloquesContainer.querySelector('.bloque-texto-input');
+      const videoInput = bloquesContainer.querySelector('.bloque-video-input');
+      const submitBtnBloque = bloquesContainer.querySelector('.bloque-submit-btn');
+
+      tipoSelect.addEventListener('change', () => {
+        if (tipoSelect.value === 'video') {
+          textoInput.style.display = 'none';
+          videoInput.style.display = 'block';
+          submitBtnBloque.textContent = 'Agregar bloque de video';
+        } else {
+          textoInput.style.display = 'block';
+          videoInput.style.display = 'none';
+          submitBtnBloque.textContent = 'Agregar bloque de texto';
+        }
+      });
 
       toggleBtn.addEventListener('click', () => {
         const abierto = bloquesContainer.style.display === 'block';
@@ -1278,8 +1300,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       bloquesContainer.querySelector('.bloque-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const textarea = bloquesContainer.querySelector('.bloque-texto-input');
-        const contenido = textarea.value.trim();
+        const tipo = tipoSelect.value;
+        const contenido = tipo === 'video' ? videoInput.value.trim() : textoInput.value.trim();
         if (!contenido) return;
         const btn = e.target.querySelector('button[type="submit"]');
         btn.disabled = true;
@@ -1287,12 +1309,13 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           const cantidadActual = (bloquesPorSubtema[subtema.id] || []).length;
           await addDoc(collection(db, 'bloques'), {
             subtemaId: subtema.id,
-            tipo: 'texto',
+            tipo: tipo,
             contenido: contenido,
             orden: cantidadActual,
             creado: serverTimestamp()
           });
-          textarea.value = '';
+          textoInput.value = '';
+          videoInput.value = '';
         } catch (err) {
           alert('No se pudo agregar el bloque. Intenta de nuevo.');
         } finally {
@@ -1325,9 +1348,37 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       const vista = document.createElement('div');
       vista.style.cssText = 'display:flex; gap:6px; align-items:flex-start;';
-      const span = document.createElement('span');
-      span.style.cssText = 'flex:1; white-space:pre-wrap;';
-      span.textContent = `${idx + 1}. ${bloque.contenido}`;
+
+      const contenidoWrap = document.createElement('div');
+      contenidoWrap.style.flex = '1';
+
+      const etiqueta = document.createElement('div');
+      etiqueta.style.cssText = 'font-size:10.5px; font-weight:700; color:var(--ink-soft); margin-bottom:3px;';
+      etiqueta.textContent = `${idx + 1}. ${bloque.tipo === 'video' ? '🎬 Video' : '📄 Texto'}`;
+      contenidoWrap.appendChild(etiqueta);
+
+      if (bloque.tipo === 'video') {
+        const youtubeId = extraerYoutubeId(bloque.contenido);
+        if (youtubeId) {
+          const videoWrap = document.createElement('div');
+          videoWrap.style.cssText = 'position:relative; padding-bottom:56.25%; height:0; border-radius:6px; overflow:hidden;';
+          videoWrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allowfullscreen></iframe>`;
+          contenidoWrap.appendChild(videoWrap);
+        } else {
+          const enlace = document.createElement('a');
+          enlace.href = bloque.contenido;
+          enlace.target = '_blank';
+          enlace.rel = 'noopener';
+          enlace.style.cssText = 'color:var(--teal);';
+          enlace.textContent = 'Ver video ↗';
+          contenidoWrap.appendChild(enlace);
+        }
+      } else {
+        const span = document.createElement('span');
+        span.style.cssText = 'white-space:pre-wrap;';
+        span.textContent = bloque.contenido;
+        contenidoWrap.appendChild(span);
+      }
 
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
@@ -1350,10 +1401,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       editBtn.addEventListener('click', () => {
         li.innerHTML = '';
-        const textarea = document.createElement('textarea');
-        textarea.rows = 3;
-        textarea.value = bloque.contenido;
-        textarea.style.cssText = 'width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:\'Inter\', sans-serif; resize:vertical; margin-bottom:6px;';
+        const campoEdicion = bloque.tipo === 'video' ? document.createElement('input') : document.createElement('textarea');
+        if (bloque.tipo === 'video') {
+          campoEdicion.type = 'text';
+        } else {
+          campoEdicion.rows = 3;
+        }
+        campoEdicion.value = bloque.contenido;
+        campoEdicion.style.cssText = 'width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:\'Inter\', sans-serif; resize:vertical; margin-bottom:6px;';
 
         const saveBtn = document.createElement('button');
         saveBtn.type = 'button';
@@ -1366,7 +1421,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         cancelBtn.style.cssText = 'padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:11px; cursor:pointer;';
 
         saveBtn.addEventListener('click', async () => {
-          const nuevoContenido = textarea.value.trim();
+          const nuevoContenido = campoEdicion.value.trim();
           if (!nuevoContenido) return;
           saveBtn.disabled = true;
           try {
@@ -1378,13 +1433,13 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         });
         cancelBtn.addEventListener('click', () => renderBloquesList(subtemaId));
 
-        li.appendChild(textarea);
+        li.appendChild(campoEdicion);
         li.appendChild(saveBtn);
         li.appendChild(cancelBtn);
-        textarea.focus();
+        campoEdicion.focus();
       });
 
-      vista.appendChild(span);
+      vista.appendChild(contenidoWrap);
       vista.appendChild(editBtn);
       vista.appendChild(deleteBtn);
       li.appendChild(vista);
