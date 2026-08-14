@@ -539,6 +539,17 @@
   };
 
   const app = initializeApp(firebaseConfig);
+
+  // --- Cargador de la API de YouTube (para autoreproducir y detectar cuándo termina un video) ---
+  let ytApiListo = false;
+  let ytApiListoResolver;
+  const ytApiListoPromise = new Promise((resolve) => { ytApiListoResolver = resolve; });
+  window.onYouTubeIframeAPIReady = () => { ytApiListo = true; ytApiListoResolver(); };
+  (function cargarScriptYoutube(){
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  })();
   const auth = getAuth(app);
   const db = getFirestore(app);
 
@@ -623,6 +634,7 @@
   let contenidoFlat = [];
   let contenidoIndex = 0;
   let estudianteCursoIdActual = null;
+  let ytPlayerActual = null;
   const bienvenidaMensajeInput = document.getElementById('bienvenidaMensajeInput');
   const bienvenidaVideoInput = document.getElementById('bienvenidaVideoInput');
   const guardarBienvenidaBtn = document.getElementById('guardarBienvenidaBtn');
@@ -1609,24 +1621,106 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       contenidoSeccionIntro.style.display = 'none';
     }
 
-    // Ruta tipo "chips" (más visual que texto plano)
+    // Ruta tipo "chips" (más visual que texto plano) — se oculta en video para maximizar la pantalla
     contenidoBreadcrumb.innerHTML = [item.moduloNombre, item.temaNombre, item.subtemaNombre]
       .map(t => `<span style="background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:3px 10px;">${t}</span>`)
       .join('<span style="color:#c3cbda;">→</span>');
 
+    // Se destruye cualquier reproductor de YouTube anterior antes de renderizar el nuevo bloque
+    if (ytPlayerActual) {
+      try { ytPlayerActual.destroy(); } catch (err) {}
+      ytPlayerActual = null;
+    }
+
     if (item.bloque.tipo === 'video') {
-      const visorHtml = construirVisorDeVideo(item.bloque.contenido);
-      contenidoBody.innerHTML = visorHtml || '<span style="color:var(--danger);">Este enlace de video no se pudo reconocer.</span>';
+      renderBloqueVideo(item.bloque.contenido);
     } else {
+      // Bloque de texto: vista normal, con ruta y encabezado de sección visibles
+      contenidoSeccionIntro.style.display = esInicioDeSubtema ? 'block' : 'none';
+      contenidoBreadcrumb.style.display = 'flex';
+      contenidoBody.style.padding = '22px';
+      contenidoBody.style.background = 'var(--paper-card)';
+      contenidoBody.style.border = '1px solid var(--line)';
+      contenidoBody.style.boxShadow = '0 4px 14px rgba(22,35,61,0.05)';
       contenidoBody.innerHTML = `<div style="white-space:pre-wrap;">${item.bloque.contenido}</div>`;
+      contenidoSiguienteBtn.style.display = 'inline-block';
+      contenidoSiguienteBtn.textContent = contenidoIndex === contenidoFlat.length - 1 ? 'Finalizar ✓' : 'Siguiente →';
     }
 
     contenidoAnteriorBtn.disabled = contenidoIndex === 0;
     contenidoAnteriorBtn.style.opacity = contenidoIndex === 0 ? '0.4' : '1';
-    contenidoSiguienteBtn.textContent = contenidoIndex === contenidoFlat.length - 1 ? 'Finalizar ✓' : 'Siguiente →';
+  }
+
+  // Arma el bloque de video: ocupa toda la pantalla del contenido (sin ruta ni encabezado
+  // de sección de por medio), se reproduce automáticamente, y el botón para continuar
+  // solo aparece cuando el video termina (en YouTube; en Drive no se puede detectar el
+  // final, así que ahí se muestra el botón de inmediato).
+  function renderBloqueVideo(url){
+    contenidoSeccionIntro.style.display = 'none';
+    contenidoBreadcrumb.style.display = 'none';
+    contenidoBody.style.padding = '0';
+    contenidoBody.style.background = 'transparent';
+    contenidoBody.style.boxShadow = 'none';
+    contenidoBody.style.border = 'none';
+    contenidoSiguienteBtn.style.display = 'none';
+
+    const esUltimo = contenidoIndex === contenidoFlat.length - 1;
+    const textoContinuar = esUltimo ? 'Finalizar ✓' : 'Continuar →';
+
+    const youtubeId = extraerYoutubeId(url);
+    const driveEmbed = extraerDriveEmbed(url);
+
+    if (youtubeId) {
+      contenidoBody.innerHTML = `
+        <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(22,35,61,0.15);">
+          <div id="yt-player-holder" style="position:absolute; top:0; left:0; width:100%; height:100%;"></div>
+        </div>
+        <p style="text-align:center; font-size:11.5px; color:#8493ab; margin:10px 0 0;">🔇 El video empieza en silencio — usa el ícono de sonido del reproductor para activarlo.</p>
+      `;
+      crearReproductorYoutube(youtubeId, textoContinuar);
+    } else if (driveEmbed) {
+      contenidoBody.innerHTML = `
+        <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(22,35,61,0.15);">
+          <iframe src="${driveEmbed}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allow="autoplay"></iframe>
+        </div>`;
+      // Google Drive no permite detectar cuándo termina el video, así que el botón
+      // para continuar se muestra de inmediato (no se puede condicionar al final).
+      contenidoSiguienteBtn.style.display = 'inline-block';
+      contenidoSiguienteBtn.textContent = textoContinuar;
+    } else {
+      contenidoBody.style.padding = '22px';
+      contenidoBody.style.background = 'var(--paper-card)';
+      contenidoBody.style.border = '1px solid var(--line)';
+      contenidoBody.innerHTML = '<span style="color:var(--danger);">Este enlace de video no se pudo reconocer (usa YouTube o Google Drive).</span>';
+      contenidoSiguienteBtn.style.display = 'inline-block';
+      contenidoSiguienteBtn.textContent = textoContinuar;
+    }
+  }
+
+  async function crearReproductorYoutube(youtubeId, textoContinuar){
+    if (!ytApiListo) await ytApiListoPromise;
+    // Puede que el estudiante ya haya pasado a otro bloque mientras cargaba la API
+    if (!document.getElementById('yt-player-holder')) return;
+
+    ytPlayerActual = new YT.Player('yt-player-holder', {
+      videoId: youtubeId,
+      playerVars: { autoplay: 1, mute: 1, rel: 0, playsinline: 1 },
+      events: {
+        onStateChange: (evento) => {
+          if (evento.data === YT.PlayerState.ENDED) {
+            contenidoSiguienteBtn.style.display = 'inline-block';
+            contenidoSiguienteBtn.textContent = textoContinuar;
+          }
+        }
+      }
+    });
   }
 
   function mostrarPantallaFinal(){
+    if (ytPlayerActual) {
+      try { ytPlayerActual.destroy(); } catch (err) {}
+      ytPlayerActual = null;
+    }
     contenidoViewer.style.display = 'none';
     contenidoNavBar.style.display = 'none';
     contenidoFinal.style.display = 'block';
