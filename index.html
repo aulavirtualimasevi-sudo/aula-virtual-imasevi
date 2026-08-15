@@ -482,6 +482,12 @@
       </div>
     </div>
 
+    <div class="admin-section" id="profesorSection" style="display:none;">
+      <h3>Mis cursos asignados</h3>
+      <ul class="course-list" id="profesorCourseList"></ul>
+      <div class="course-empty" id="profesorCourseEmpty" style="display:none;">Todavía no tienes ningún curso asignado. Contacta al Administrador.</div>
+    </div>
+
     <div class="admin-section" id="adminSection" style="display:none;">
       <h3>🎬 Bienvenida general (aplica a todos los cursos)</h3>
       <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:22px; padding-bottom:22px; border-bottom:1px solid var(--line);">
@@ -527,6 +533,9 @@
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
     collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    getStorage, ref, uploadBytes, getDownloadURL, deleteObject
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   // --- Configuración de tu proyecto de Firebase ---
   const firebaseConfig = {
@@ -552,6 +561,7 @@
   })();
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const storage = getStorage(app);
 
   // --- Textos por rol ---
   const roleInfo = {
@@ -611,6 +621,9 @@
   const googleCompleteBtn = document.getElementById('googleCompleteBtn');
   let googlePendingUser = null;
   const adminSection = document.getElementById('adminSection');
+  const profesorSection = document.getElementById('profesorSection');
+  const profesorCourseList = document.getElementById('profesorCourseList');
+  const profesorCourseEmpty = document.getElementById('profesorCourseEmpty');
   const studentSection = document.getElementById('studentSection');
   const studentCourseName = document.getElementById('studentCourseName');
   const studentWelcomeMsg = document.getElementById('studentWelcomeMsg');
@@ -1347,11 +1360,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <form class="bloque-form" data-subtema-id="${subtema.id}" style="display:flex; flex-direction:column; gap:6px; margin-bottom:7px;">
           <select class="bloque-tipo-select" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; background:#fff;">
             <option value="texto">📄 Bloque de texto</option>
+            <option value="imagen">🖼️ Bloque de imagen</option>
             <option value="video">🎬 Bloque de video (enlace)</option>
           </select>
           <textarea class="bloque-texto-input" rows="3" placeholder="Escribe el texto de este bloque..." style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
           <input type="text" class="bloque-video-input" placeholder="Enlace de YouTube o Google Drive" style="display:none; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
           <p class="bloque-video-ayuda" style="display:none; font-size:10.5px; color:#8493ab; margin:0;">💡 ¿Tienes el video descargado (sin enlace)? Súbelo a Google Drive (gratis), compártelo como "Cualquier persona con el enlace" y pega ese enlace aquí.</p>
+          <input type="file" class="bloque-imagen-input" accept="image/*" style="display:none; width:100%; font-size:12px;">
+          <p class="bloque-imagen-status" style="display:none; font-size:11px; color:var(--teal); margin:0;"></p>
           <button type="submit" class="bloque-submit-btn" style="align-self:flex-start; padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Agregar bloque de texto</button>
         </form>
         <ul class="bloques-list" data-list-for="${subtema.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
@@ -1361,20 +1377,28 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       const tipoSelect = bloquesContainer.querySelector('.bloque-tipo-select');
       const textoInput = bloquesContainer.querySelector('.bloque-texto-input');
       const videoInput = bloquesContainer.querySelector('.bloque-video-input');
+      const imagenInput = bloquesContainer.querySelector('.bloque-imagen-input');
+      const imagenStatus = bloquesContainer.querySelector('.bloque-imagen-status');
       const submitBtnBloque = bloquesContainer.querySelector('.bloque-submit-btn');
 
       const videoAyuda = bloquesContainer.querySelector('.bloque-video-ayuda');
 
       tipoSelect.addEventListener('change', () => {
+        textoInput.style.display = 'none';
+        videoInput.style.display = 'none';
+        videoAyuda.style.display = 'none';
+        imagenInput.style.display = 'none';
+        imagenStatus.style.display = 'none';
+
         if (tipoSelect.value === 'video') {
-          textoInput.style.display = 'none';
           videoInput.style.display = 'block';
           videoAyuda.style.display = 'block';
           submitBtnBloque.textContent = 'Agregar bloque de video';
+        } else if (tipoSelect.value === 'imagen') {
+          imagenInput.style.display = 'block';
+          submitBtnBloque.textContent = 'Agregar bloque de imagen';
         } else {
           textoInput.style.display = 'block';
-          videoInput.style.display = 'none';
-          videoAyuda.style.display = 'none';
           submitBtnBloque.textContent = 'Agregar bloque de texto';
         }
       });
@@ -1388,9 +1412,43 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       bloquesContainer.querySelector('.bloque-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const tipo = tipoSelect.value;
+        const btn = e.target.querySelector('button[type="submit"]');
+
+        if (tipo === 'imagen') {
+          const archivo = imagenInput.files[0];
+          if (!archivo) {
+            alert('Selecciona una imagen primero.');
+            return;
+          }
+          btn.disabled = true;
+          imagenStatus.style.display = 'block';
+          imagenStatus.textContent = 'Subiendo imagen...';
+          try {
+            const cantidadActual = (bloquesPorSubtema[subtema.id] || []).length;
+            const rutaArchivo = `bloques/${subtema.id}/${Date.now()}_${archivo.name}`;
+            const archivoRef = ref(storage, rutaArchivo);
+            await uploadBytes(archivoRef, archivo);
+            const urlDescarga = await getDownloadURL(archivoRef);
+            await addDoc(collection(db, 'bloques'), {
+              subtemaId: subtema.id,
+              tipo: 'imagen',
+              contenido: urlDescarga,
+              rutaStorage: rutaArchivo,
+              orden: cantidadActual,
+              creado: serverTimestamp()
+            });
+            imagenInput.value = '';
+            imagenStatus.style.display = 'none';
+          } catch (err) {
+            imagenStatus.textContent = 'No se pudo subir la imagen. Intenta de nuevo.';
+          } finally {
+            btn.disabled = false;
+          }
+          return;
+        }
+
         const contenido = tipo === 'video' ? videoInput.value.trim() : textoInput.value.trim();
         if (!contenido) return;
-        const btn = e.target.querySelector('button[type="submit"]');
         btn.disabled = true;
         try {
           const cantidadActual = (bloquesPorSubtema[subtema.id] || []).length;
@@ -1441,7 +1499,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       const etiqueta = document.createElement('div');
       etiqueta.style.cssText = 'font-size:10.5px; font-weight:700; color:var(--ink-soft); margin-bottom:3px;';
-      etiqueta.textContent = `${idx + 1}. ${bloque.tipo === 'video' ? '🎬 Video' : '📄 Texto'}`;
+      etiqueta.textContent = `${idx + 1}. ${bloque.tipo === 'video' ? '🎬 Video' : bloque.tipo === 'imagen' ? '🖼️ Imagen' : '📄 Texto'}`;
       contenidoWrap.appendChild(etiqueta);
 
       if (bloque.tipo === 'video') {
@@ -1456,6 +1514,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           aviso.textContent = 'No se pudo reconocer este enlace como YouTube o Google Drive. Revísalo.';
           contenidoWrap.appendChild(aviso);
         }
+      } else if (bloque.tipo === 'imagen') {
+        const img = document.createElement('img');
+        img.src = bloque.contenido;
+        img.style.cssText = 'max-width:100%; max-height:160px; border-radius:6px; display:block;';
+        contenidoWrap.appendChild(img);
       } else {
         const span = document.createElement('span');
         span.style.cssText = 'white-space:pre-wrap;';
@@ -1476,6 +1539,9 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         const confirmado = confirm('¿Eliminar este bloque de contenido? Esta acción no se puede deshacer.');
         if (!confirmado) return;
         try {
+          if (bloque.tipo === 'imagen' && bloque.rutaStorage) {
+            try { await deleteObject(ref(storage, bloque.rutaStorage)); } catch (err) {}
+          }
           await deleteDoc(doc(db, 'bloques', bloque.id));
         } catch (err) {
           alert('No se pudo eliminar el bloque. Intenta de nuevo.');
@@ -1484,6 +1550,49 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       editBtn.addEventListener('click', () => {
         li.innerHTML = '';
+
+        if (bloque.tipo === 'imagen') {
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.accept = 'image/*';
+          fileInput.style.cssText = 'width:100%; font-size:12px; margin-bottom:6px;';
+
+          const saveBtn = document.createElement('button');
+          saveBtn.type = 'button';
+          saveBtn.textContent = 'Reemplazar imagen';
+          saveBtn.style.cssText = 'padding:5px 9px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:11px; font-weight:600; cursor:pointer; margin-right:6px;';
+
+          const cancelBtn = document.createElement('button');
+          cancelBtn.type = 'button';
+          cancelBtn.textContent = 'Cancelar';
+          cancelBtn.style.cssText = 'padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:11px; cursor:pointer;';
+
+          saveBtn.addEventListener('click', async () => {
+            const archivo = fileInput.files[0];
+            if (!archivo) { alert('Selecciona una imagen primero.'); return; }
+            saveBtn.disabled = true;
+            try {
+              const rutaArchivo = `bloques/${bloque.subtemaId}/${Date.now()}_${archivo.name}`;
+              const archivoRef = ref(storage, rutaArchivo);
+              await uploadBytes(archivoRef, archivo);
+              const urlDescarga = await getDownloadURL(archivoRef);
+              if (bloque.rutaStorage) {
+                try { await deleteObject(ref(storage, bloque.rutaStorage)); } catch (err) {}
+              }
+              await updateDoc(doc(db, 'bloques', bloque.id), { contenido: urlDescarga, rutaStorage: rutaArchivo });
+            } catch (err) {
+              alert('No se pudo reemplazar la imagen. Intenta de nuevo.');
+              saveBtn.disabled = false;
+            }
+          });
+          cancelBtn.addEventListener('click', () => renderBloquesList(subtemaId));
+
+          li.appendChild(fileInput);
+          li.appendChild(saveBtn);
+          li.appendChild(cancelBtn);
+          return;
+        }
+
         const campoEdicion = bloque.tipo === 'video' ? document.createElement('input') : document.createElement('textarea');
         if (bloque.tipo === 'video') {
           campoEdicion.type = 'text';
@@ -1547,6 +1656,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   async function eliminarBloquesDeSubtema(subtemaId){
     const bloquesSnap = await getDocs(query(collection(db, 'bloques'), where('subtemaId', '==', subtemaId)));
     for (const bloqueDoc of bloquesSnap.docs) {
+      const datos = bloqueDoc.data();
+      if (datos.tipo === 'imagen' && datos.rutaStorage) {
+        try { await deleteObject(ref(storage, datos.rutaStorage)); } catch (err) {}
+      }
       await deleteDoc(doc(db, 'bloques', bloqueDoc.id));
     }
   }
@@ -1634,6 +1747,16 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
     if (item.bloque.tipo === 'video') {
       renderBloqueVideo(item.bloque.contenido);
+    } else if (item.bloque.tipo === 'imagen') {
+      contenidoSeccionIntro.style.display = esInicioDeSubtema ? 'block' : 'none';
+      contenidoBreadcrumb.style.display = 'flex';
+      contenidoBody.style.padding = '14px';
+      contenidoBody.style.background = 'var(--paper-card)';
+      contenidoBody.style.border = '1px solid var(--line)';
+      contenidoBody.style.boxShadow = '0 4px 14px rgba(22,35,61,0.05)';
+      contenidoBody.innerHTML = `<img src="${item.bloque.contenido}" style="max-width:100%; display:block; margin:0 auto; border-radius:8px;">`;
+      contenidoSiguienteBtn.style.display = 'inline-block';
+      contenidoSiguienteBtn.textContent = contenidoIndex === contenidoFlat.length - 1 ? 'Finalizar ✓' : 'Siguiente →';
     } else {
       // Bloque de texto: vista normal, con ruta y encabezado de sección visibles
       contenidoSeccionIntro.style.display = esInicioDeSubtema ? 'block' : 'none';
@@ -1868,6 +1991,125 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenedor.appendChild(deleteBtn);
   }
 
+  // ---------- Panel del Profesor (solo consulta: sus cursos, estudiantes y estructura) ----------
+
+  async function cargarEstudiantesDeCurso(cursoId){
+    const snap = await getDocs(query(
+      collection(db, 'usuarios'),
+      where('cursoId', '==', cursoId),
+      where('rol', '==', 'estudiante')
+    ));
+    return snap.docs.map(d => d.data());
+  }
+
+  async function cargarEstructuraSoloLectura(cursoId){
+    const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
+    const modulos = ordenarPorCampoOrden(modulosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    for (const modulo of modulos) {
+      const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', modulo.id)));
+      modulo.temas = ordenarPorCampoOrden(temasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      for (const tema of modulo.temas) {
+        const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', tema.id)));
+        tema.subtemas = ordenarPorCampoOrden(subtemasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    }
+    return modulos;
+  }
+
+  function renderEstructuraSoloLectura(modulos){
+    if (modulos.length === 0) {
+      return '<p style="font-size:12.5px; color:#8493ab;">Este curso todavía no tiene módulos.</p>';
+    }
+    return '<ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px;">' +
+      modulos.map((modulo, i) => `
+        <li style="padding:8px; background:#fff; border:1px solid var(--line); border-radius:6px;">
+          <div style="font-weight:600; font-size:13px; color:var(--ink);">${i + 1}. ${modulo.nombre}</div>
+          ${(modulo.temas || []).length === 0 ? '' : `
+            <ul style="list-style:none; margin:6px 0 0; padding-left:12px; display:flex; flex-direction:column; gap:5px;">
+              ${modulo.temas.map((tema, j) => `
+                <li style="font-size:12px; color:var(--ink-soft);">
+                  ${i + 1}.${j + 1} ${tema.nombre}
+                  ${(tema.subtemas || []).length === 0 ? '' : `
+                    <ul style="list-style:none; margin:4px 0 0; padding-left:14px; display:flex; flex-direction:column; gap:3px;">
+                      ${tema.subtemas.map((sub, k) => `<li style="font-size:11.5px; color:#8493ab;">${i + 1}.${j + 1}.${k + 1} ${sub.nombre}</li>`).join('')}
+                    </ul>`}
+                </li>`).join('')}
+            </ul>`}
+        </li>`).join('') +
+      '</ul>';
+  }
+
+  async function iniciarPanelProfesor(uid){
+    const cursosSnap = await getDocs(query(collection(db, 'cursos'), where('profesorUid', '==', uid)));
+    const cursos = cursosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    profesorCourseList.innerHTML = '';
+    if (cursos.length === 0) {
+      profesorCourseEmpty.style.display = 'block';
+      return;
+    }
+    profesorCourseEmpty.style.display = 'none';
+
+    cursos.forEach(curso => {
+      const li = document.createElement('li');
+      li.className = 'course-item';
+      li.style.flexDirection = 'column';
+      li.style.alignItems = 'stretch';
+      li.style.gap = '10px';
+      li.innerHTML = `
+        <div>
+          <div class="course-name">${curso.nombre}</div>
+          <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="prof-toggle-estudiantes" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">👥 Estudiantes ▾</button>
+          <button type="button" class="prof-toggle-estructura" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📚 Estructura ▾</button>
+        </div>
+        <div class="prof-estudiantes-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12.5px;">Cargando…</div>
+        <div class="prof-estructura-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;">Cargando…</div>
+      `;
+      profesorCourseList.appendChild(li);
+    });
+
+    document.querySelectorAll('.prof-toggle-estudiantes').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cursoId = btn.dataset.cursoId;
+        const panel = document.querySelector(`.prof-estudiantes-panel[data-for="${cursoId}"]`);
+        const abierto = panel.style.display === 'block';
+        panel.style.display = abierto ? 'none' : 'block';
+        if (!abierto && panel.dataset.cargado !== 'true') {
+          const estudiantes = await cargarEstudiantesDeCurso(cursoId);
+          panel.dataset.cargado = 'true';
+          if (estudiantes.length === 0) {
+            panel.innerHTML = 'Todavía no hay estudiantes matriculados en este curso.';
+          } else {
+            panel.innerHTML = '<ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;">' +
+              estudiantes.map(est => `
+                <li style="padding:7px 9px; background:#fff; border:1px solid var(--line); border-radius:6px;">
+                  <div style="font-weight:600;">${est.nombre || est.email}</div>
+                  <div style="font-size:11px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '—'}</div>
+                </li>`).join('') +
+              '</ul>';
+          }
+        }
+      });
+    });
+
+    document.querySelectorAll('.prof-toggle-estructura').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cursoId = btn.dataset.cursoId;
+        const panel = document.querySelector(`.prof-estructura-panel[data-for="${cursoId}"]`);
+        const abierto = panel.style.display === 'block';
+        panel.style.display = abierto ? 'none' : 'block';
+        if (!abierto && panel.dataset.cargado !== 'true') {
+          const modulos = await cargarEstructuraSoloLectura(cursoId);
+          panel.dataset.cargado = 'true';
+          panel.innerHTML = renderEstructuraSoloLectura(modulos);
+        }
+      });
+    });
+  }
+
   // ---------- Bienvenida general (un solo documento, aplica a todos los cursos) ----------
 
   let bienvenidaCargada = false;
@@ -2069,6 +2311,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     panelBadge.style.display = 'block';
     panelTitle.style.display = 'block';
     studentWelcomeBlock.style.display = 'block';
+    profesorSection.style.display = 'none';
     studentSection.style.borderTop = '';
     studentSection.style.paddingTop = '';
     studentBeginBtn.disabled = false;
@@ -2136,6 +2379,13 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         panelSubtitle.textContent = 'Todavía no estás matriculado/a en ningún curso.';
         studentSection.style.display = 'none';
       }
+    } else if (rol === 'profesor') {
+      adminSection.style.display = 'none';
+      studentSection.style.display = 'none';
+      panelSubtitle.style.display = 'block';
+      panelSubtitle.textContent = 'Consulta tus cursos asignados, estudiantes matriculados y estructura de contenido.';
+      profesorSection.style.display = 'block';
+      iniciarPanelProfesor(uid);
     } else {
       panelSubtitle.style.display = 'block';
       panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío — lo iremos llenando en los próximos pasos.`;
