@@ -533,9 +533,21 @@
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
     collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import {
-    getStorage, ref, uploadBytes, getDownloadURL, deleteObject
-  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+  // --- Configuración de ImgBB (para subir imágenes, sin necesitar tarjeta) ---
+  const IMGBB_API_KEY = '7dec8bf1e363f6a44f93a21416abd867';
+
+  async function subirImagenACloudinary(archivo){
+    const formData = new FormData();
+    formData.append('image', archivo);
+    const respuesta = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+      method: 'POST',
+      body: formData
+    });
+    const datos = await respuesta.json();
+    if (!respuesta.ok || !datos.success) throw new Error('No se pudo subir la imagen');
+    return datos.data.url;
+  }
 
   // --- Configuración de tu proyecto de Firebase ---
   const firebaseConfig = {
@@ -561,7 +573,6 @@
   })();
   const auth = getAuth(app);
   const db = getFirestore(app);
-  const storage = getStorage(app);
 
   // --- Textos por rol ---
   const roleInfo = {
@@ -1425,15 +1436,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           imagenStatus.textContent = 'Subiendo imagen...';
           try {
             const cantidadActual = (bloquesPorSubtema[subtema.id] || []).length;
-            const rutaArchivo = `bloques/${subtema.id}/${Date.now()}_${archivo.name}`;
-            const archivoRef = ref(storage, rutaArchivo);
-            await uploadBytes(archivoRef, archivo);
-            const urlDescarga = await getDownloadURL(archivoRef);
+            const urlDescarga = await subirImagenACloudinary(archivo);
             await addDoc(collection(db, 'bloques'), {
               subtemaId: subtema.id,
               tipo: 'imagen',
               contenido: urlDescarga,
-              rutaStorage: rutaArchivo,
               orden: cantidadActual,
               creado: serverTimestamp()
             });
@@ -1539,9 +1546,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         const confirmado = confirm('¿Eliminar este bloque de contenido? Esta acción no se puede deshacer.');
         if (!confirmado) return;
         try {
-          if (bloque.tipo === 'imagen' && bloque.rutaStorage) {
-            try { await deleteObject(ref(storage, bloque.rutaStorage)); } catch (err) {}
-          }
+          // Nota: con el plan gratuito de Cloudinary, el archivo de imagen queda guardado
+          // ahí (no se puede borrar desde el navegador), pero deja de mostrarse en la plataforma.
           await deleteDoc(doc(db, 'bloques', bloque.id));
         } catch (err) {
           alert('No se pudo eliminar el bloque. Intenta de nuevo.');
@@ -1572,14 +1578,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             if (!archivo) { alert('Selecciona una imagen primero.'); return; }
             saveBtn.disabled = true;
             try {
-              const rutaArchivo = `bloques/${bloque.subtemaId}/${Date.now()}_${archivo.name}`;
-              const archivoRef = ref(storage, rutaArchivo);
-              await uploadBytes(archivoRef, archivo);
-              const urlDescarga = await getDownloadURL(archivoRef);
-              if (bloque.rutaStorage) {
-                try { await deleteObject(ref(storage, bloque.rutaStorage)); } catch (err) {}
-              }
-              await updateDoc(doc(db, 'bloques', bloque.id), { contenido: urlDescarga, rutaStorage: rutaArchivo });
+              const urlDescarga = await subirImagenACloudinary(archivo);
+              await updateDoc(doc(db, 'bloques', bloque.id), { contenido: urlDescarga });
             } catch (err) {
               alert('No se pudo reemplazar la imagen. Intenta de nuevo.');
               saveBtn.disabled = false;
@@ -1656,10 +1656,6 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   async function eliminarBloquesDeSubtema(subtemaId){
     const bloquesSnap = await getDocs(query(collection(db, 'bloques'), where('subtemaId', '==', subtemaId)));
     for (const bloqueDoc of bloquesSnap.docs) {
-      const datos = bloqueDoc.data();
-      if (datos.tipo === 'imagen' && datos.rutaStorage) {
-        try { await deleteObject(ref(storage, datos.rutaStorage)); } catch (err) {}
-      }
       await deleteDoc(doc(db, 'bloques', bloqueDoc.id));
     }
   }
