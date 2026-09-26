@@ -466,6 +466,9 @@
 
           <div id="contenidoBreadcrumb" style="font-size:11px; font-weight:600; color:var(--ink-soft); margin-bottom:10px; display:flex; gap:6px; flex-wrap:wrap;"></div>
           <div id="contenidoBody" style="padding:22px; background:var(--paper-card); border:1px solid var(--line); border-radius:12px; min-height:140px; font-size:15px; line-height:1.65; color:var(--ink); box-shadow:0 4px 14px rgba(22,35,61,0.05);"></div>
+
+          <button type="button" id="foroToggleBtn" style="margin-top:10px; padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">💬 Foro de este módulo ▾</button>
+          <div id="foroPanelEstudiante" style="display:none; margin-top:8px; padding:12px; background:var(--paper); border:1px solid var(--line); border-radius:10px;"></div>
         </div>
 
         <div id="contenidoFinal" style="display:none; text-align:center; padding:36px 20px; background:var(--paper-card); border:1px solid var(--line); border-radius:12px;">
@@ -658,6 +661,10 @@
   let contenidoFlat = [];
   let contenidoIndex = 0;
   let estudianteCursoIdActual = null;
+  const foroToggleBtn = document.getElementById('foroToggleBtn');
+  const foroPanelEstudiante = document.getElementById('foroPanelEstudiante');
+  let foroListenersActivos = new Set();
+  let identidadActual = { uid: null, nombre: '', rol: '' };
   let ytPlayerActual = null;
   const bienvenidaMensajeInput = document.getElementById('bienvenidaMensajeInput');
   const bienvenidaVideoInput = document.getElementById('bienvenidaVideoInput');
@@ -1685,6 +1692,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
           for (const bloque of bloques) {
             flat.push({
+              moduloId: modulo.id,
+              cursoId: cursoId,
               moduloNombre: modulo.nombre,
               temaNombre: tema.nombre,
               subtemaNombre: subtema.nombre,
@@ -1701,6 +1710,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenidoFinal.style.display = 'none';
     contenidoViewer.style.display = 'block';
     contenidoNavBar.style.display = 'flex';
+    foroPanelEstudiante.style.display = 'none';
 
     if (contenidoFlat.length === 0) {
       contenidoSeccionIntro.style.display = 'none';
@@ -1987,6 +1997,129 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenedor.appendChild(deleteBtn);
   }
 
+  // ---------- Foro por Módulo (Estudiante y Profesor comparten esta lógica) ----------
+
+  function formatearFechaForo(timestamp){
+    if (!timestamp || !timestamp.toDate) return '';
+    return timestamp.toDate().toLocaleString('es-PA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderMensajesForo(listaEl, mensajes){
+    if (mensajes.length === 0) {
+      listaEl.innerHTML = '<p style="font-size:12.5px; color:#8493ab; text-align:center; margin:0;">Todavía no hay mensajes. ¡Sé el primero en escribir!</p>';
+      return;
+    }
+    listaEl.innerHTML = mensajes.map(m => `
+      <div style="padding:8px 10px; background:#fff; border:1px solid var(--line); border-radius:8px; margin-bottom:7px;">
+        <div style="display:flex; justify-content:space-between; gap:8px; font-size:11.5px; margin-bottom:3px;">
+          <span style="font-weight:700; color:var(--ink);">${m.autorNombre} <span style="font-weight:500; color:#8493ab;">(${m.autorRol})</span></span>
+          <span style="color:#8493ab; white-space:nowrap;">${formatearFechaForo(m.creado)}</span>
+        </div>
+        <div style="font-size:13px; white-space:pre-wrap; color:var(--ink);">${m.mensaje}</div>
+      </div>
+    `).join('');
+  }
+
+  function ensureForoListener(moduloId, listaEl){
+    if (foroListenersActivos.has(moduloId)) return;
+    foroListenersActivos.add(moduloId);
+    onSnapshot(query(collection(db, 'mensajesForo'), where('moduloId', '==', moduloId)), (snap) => {
+      const mensajes = snap.docs.map(d => d.data())
+        .sort((a, b) => (a.creado?.seconds || 0) - (b.creado?.seconds || 0));
+      renderMensajesForo(listaEl, mensajes);
+    }, (err) => console.error('Error al leer el foro:', err));
+  }
+
+  // Construye el panel completo del foro de un módulo (lista + formulario, y si es
+  // Profesor, también el botón de cerrar/reabrir). Se usa igual para Estudiante y Profesor.
+  function construirPanelForo(contenedor, { moduloId, cursoId, esProfesor }){
+    contenedor.innerHTML = `
+      <h4 style="font-family:'Source Serif 4', serif; font-size:14px; margin:0 0 10px; color:var(--ink);">💬 Foro del módulo</h4>
+      ${esProfesor ? `<button type="button" class="foro-cerrar-btn" style="margin-bottom:10px; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;">Cargando estado…</button>` : ''}
+      <div class="foro-cerrado-aviso" style="display:none; font-size:12px; color:var(--danger); background:#fbeceb; border:1px solid #f0c9c5; border-radius:6px; padding:8px 10px; margin-bottom:8px;">Este foro está cerrado por el Profesor. No se pueden enviar nuevos mensajes.</div>
+      <div class="foro-mensajes" style="max-height:260px; overflow-y:auto; margin-bottom:10px;">Cargando mensajes…</div>
+      <form class="foro-form" style="display:flex; gap:8px;">
+        <input type="text" class="foro-input" placeholder="Escribe un mensaje..." style="flex:1; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;" required>
+        <button type="submit" style="padding:8px 14px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Enviar</button>
+      </form>
+    `;
+
+    const listaEl = contenedor.querySelector('.foro-mensajes');
+    const formEl = contenedor.querySelector('.foro-form');
+    const inputEl = contenedor.querySelector('.foro-input');
+    const avisoEl = contenedor.querySelector('.foro-cerrado-aviso');
+
+    ensureForoListener(moduloId, listaEl);
+
+    let foroCerradoActual = false;
+
+    function aplicarEstadoCerrado(cerrado){
+      foroCerradoActual = cerrado;
+      avisoEl.style.display = cerrado ? 'block' : 'none';
+      inputEl.disabled = cerrado;
+      formEl.querySelector('button[type="submit"]').disabled = cerrado;
+    }
+
+    // Escuchamos el propio módulo para saber si el foro está cerrado o abierto
+    onSnapshot(doc(db, 'modulos', moduloId), (snap) => {
+      const cerrado = snap.exists() && snap.data().foroCerrado === true;
+      aplicarEstadoCerrado(cerrado);
+      const btnCerrar = contenedor.querySelector('.foro-cerrar-btn');
+      if (btnCerrar) {
+        btnCerrar.textContent = cerrado ? '🔓 Reabrir foro' : '🔒 Cerrar foro';
+      }
+    });
+
+    formEl.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = inputEl.value.trim();
+      if (!mensaje || foroCerradoActual) return;
+      const btn = formEl.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        await addDoc(collection(db, 'mensajesForo'), {
+          moduloId: moduloId,
+          cursoId: cursoId,
+          autorUid: identidadActual.uid,
+          autorNombre: identidadActual.nombre,
+          autorRol: identidadActual.rol,
+          mensaje: mensaje,
+          creado: serverTimestamp()
+        });
+        inputEl.value = '';
+      } catch (err) {
+        alert('No se pudo enviar el mensaje. Intenta de nuevo.');
+      } finally {
+        btn.disabled = foroCerradoActual;
+      }
+    });
+
+    const btnCerrar = contenedor.querySelector('.foro-cerrar-btn');
+    if (btnCerrar) {
+      btnCerrar.addEventListener('click', async () => {
+        btnCerrar.disabled = true;
+        try {
+          await updateDoc(doc(db, 'modulos', moduloId), { foroCerrado: !foroCerradoActual });
+        } catch (err) {
+          alert('No se pudo cambiar el estado del foro. Intenta de nuevo.');
+        } finally {
+          btnCerrar.disabled = false;
+        }
+      });
+    }
+  }
+
+  foroToggleBtn.addEventListener('click', () => {
+    const abierto = foroPanelEstudiante.style.display === 'block';
+    foroPanelEstudiante.style.display = abierto ? 'none' : 'block';
+    if (!abierto) {
+      const item = contenidoFlat[contenidoIndex];
+      if (item) {
+        construirPanelForo(foroPanelEstudiante, { moduloId: item.moduloId, cursoId: item.cursoId, esProfesor: false });
+      }
+    }
+  });
+
   // ---------- Panel del Profesor (solo consulta: sus cursos, estudiantes y estructura) ----------
 
   async function cargarEstudiantesDeCurso(cursoId){
@@ -2012,7 +2145,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     return modulos;
   }
 
-  function renderEstructuraSoloLectura(modulos){
+  function renderEstructuraSoloLectura(modulos, cursoId){
     if (modulos.length === 0) {
       return '<p style="font-size:12.5px; color:#8493ab;">Este curso todavía no tiene módulos.</p>';
     }
@@ -2031,6 +2164,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
                     </ul>`}
                 </li>`).join('')}
             </ul>`}
+          <button type="button" class="foro-toggle-btn-prof" data-modulo-id="${modulo.id}" data-curso-id="${cursoId}" style="margin-top:8px; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11px; font-weight:600; cursor:pointer;">💬 Foro ▾</button>
+          <div class="foro-panel-prof" data-for="${modulo.id}" style="display:none; margin-top:8px; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;"></div>
         </li>`).join('') +
       '</ul>';
   }
@@ -2100,7 +2235,21 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         if (!abierto && panel.dataset.cargado !== 'true') {
           const modulos = await cargarEstructuraSoloLectura(cursoId);
           panel.dataset.cargado = 'true';
-          panel.innerHTML = renderEstructuraSoloLectura(modulos);
+          panel.innerHTML = renderEstructuraSoloLectura(modulos, cursoId);
+
+          panel.querySelectorAll('.foro-toggle-btn-prof').forEach(foroBtn => {
+            foroBtn.addEventListener('click', () => {
+              const moduloId = foroBtn.dataset.moduloId;
+              const cId = foroBtn.dataset.cursoId;
+              const foroPanel = panel.querySelector(`.foro-panel-prof[data-for="${moduloId}"]`);
+              const foroAbierto = foroPanel.style.display === 'block';
+              foroPanel.style.display = foroAbierto ? 'none' : 'block';
+              if (!foroAbierto && foroPanel.dataset.cargado !== 'true') {
+                foroPanel.dataset.cargado = 'true';
+                construirPanelForo(foroPanel, { moduloId, cursoId: cId, esProfesor: true });
+              }
+            });
+          });
         }
       });
     });
@@ -2322,6 +2471,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     }
 
     const rol = snap.data().rol;
+    identidadActual = { uid: uid, nombre: snap.data().nombre || '', rol: roleInfo[rol]?.label || rol };
     loginView.style.display = 'none';
     panelView.style.display = 'block';
     panelBadge.textContent = roleInfo[rol]?.label || rol;
