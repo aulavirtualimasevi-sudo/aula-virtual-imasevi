@@ -2088,7 +2088,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         });
         inputEl.value = '';
       } catch (err) {
-        alert('No se pudo enviar el mensaje. Intenta de nuevo.');
+        console.error('Error al enviar mensaje de foro:', err);
+        alert('No se pudo enviar el mensaje: ' + (err.message || err));
       } finally {
         btn.disabled = foroCerradoActual;
       }
