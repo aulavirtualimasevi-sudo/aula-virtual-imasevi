@@ -953,6 +953,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
         <button type="button" class="toggle-modulos-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">Módulos ▾</button>
         <button type="button" class="toggle-preguntas-btn" data-nivel="curso" data-nivel-id="${curso.id}" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">🧠 Preguntas (Examen Final) ▾</button>
+        <button type="button" class="toggle-notas-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📊 Ver notas ▾</button>
         <button type="button" class="link-curso-btn" data-curso-id="${curso.id}" data-curso-nombre="${curso.nombre}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--amber-deep); border-radius:8px; background:#fff; color:var(--amber-deep); font-size:12.5px; font-weight:600; cursor:pointer;">🔗 Generar enlace para estudiantes</button>
         <div class="link-status" data-linkstatus-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none; word-break:break-all;"></div>
 
@@ -965,6 +966,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           <div class="modulos-empty" data-empty-for="${curso.id}" style="font-size:12.5px; color:#8493ab; display:none;">Todavía no hay módulos en este curso.</div>
         </div>
         <div class="preguntas-panel" data-nivel-id="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
+        <div class="notas-panel" data-notas-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
       `;
       courseList.appendChild(li);
 
@@ -2454,6 +2456,57 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     });
   }
 
+  // ---------- Ver notas (Administrador) ----------
+  // Muestra, por cada estudiante matriculado en el curso, los exámenes con nota que ha
+  // presentado (Tema, Módulo, Final) y si aprobó cada uno (70/100 o más).
+
+  async function construirPanelNotas(panel, cursoId){
+    panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Cargando notas…</p>';
+    try {
+      const estudiantesSnap = await getDocs(query(
+        collection(db, 'usuarios'),
+        where('cursoId', '==', cursoId),
+        where('rol', '==', 'estudiante')
+      ));
+      const estudiantes = estudiantesSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
+
+      if (estudiantes.length === 0) {
+        panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Todavía no hay estudiantes matriculados en este curso.</p>';
+        return;
+      }
+
+      const resultadosSnap = await getDocs(query(collection(db, 'examenesResultados'), where('cursoId', '==', cursoId)));
+      const resultados = resultadosSnap.docs.map(d => d.data());
+
+      panel.innerHTML = `<h5 style="margin:0 0 10px; font-size:13px; color:var(--ink);">📊 Notas de los estudiantes</h5>` +
+        estudiantes.map(est => {
+          const propios = resultados.filter(r => r.uid === est.uid && r.calificado);
+          const ordenNivel = { tema: 1, modulo: 2, curso: 3 };
+          propios.sort((a, b) => (ordenNivel[a.nivel] || 9) - (ordenNivel[b.nivel] || 9));
+
+          const filasHtml = propios.length === 0
+            ? '<div style="font-size:12px; color:#8493ab; padding:4px 0;">Todavía no ha presentado ningún examen calificado.</div>'
+            : propios.map(r => `
+                <div style="display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid var(--line);">
+                  <span>${r.titulo}</span>
+                  <span style="font-weight:700; color:${r.aprobado ? 'var(--teal)' : 'var(--danger)'};">${r.puntaje}/100 ${r.aprobado ? '✓ Aprobado' : '✗ No aprobado'}</span>
+                </div>
+              `).join('');
+
+          return `
+            <div style="padding:10px; background:#fff; border:1px solid var(--line); border-radius:8px; margin-bottom:8px;">
+              <div style="font-weight:700; font-size:13px; color:var(--ink);">${est.nombre || '(sin nombre)'}</div>
+              <div style="font-size:11.5px; color:#8493ab; margin-bottom:2px;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '—'}</div>
+              ${filasHtml}
+            </div>
+          `;
+        }).join('');
+    } catch (err) {
+      console.error('Error al cargar notas:', err);
+      panel.innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudieron cargar las notas. Intenta de nuevo.</p>';
+    }
+  }
+
   // ---------- Foro por Módulo (Estudiante y Profesor comparten esta lógica) ----------
 
   function formatearFechaForo(timestamp){
@@ -3010,6 +3063,19 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     if (!abierto && panel.dataset.cargado !== 'true') {
       panel.dataset.cargado = 'true';
       construirPanelPreguntas(panel, { nivel, nivelId, cursoId });
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.toggle-notas-btn');
+    if (!btn) return;
+    const cursoId = btn.dataset.cursoId;
+    const panel = document.querySelector(`.notas-panel[data-notas-for="${cursoId}"]`);
+    if (!panel) return;
+    const abierto = panel.style.display === 'block';
+    panel.style.display = abierto ? 'none' : 'block';
+    if (!abierto) {
+      construirPanelNotas(panel, cursoId);
     }
   });
 
