@@ -1744,6 +1744,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           for (const bloque of bloques) {
             flat.push({
               moduloId: modulo.id,
+              temaId: tema.id,
+              subtemaId: subtema.id,
               cursoId: cursoId,
               moduloNombre: modulo.nombre,
               temaNombre: tema.nombre,
@@ -1938,12 +1940,47 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     }
   });
 
-  contenidoSiguienteBtn.addEventListener('click', () => {
-    if (contenidoIndex < contenidoFlat.length - 1) {
+  contenidoSiguienteBtn.addEventListener('click', async () => {
+    const itemActual = contenidoFlat[contenidoIndex];
+    const esUltimoDelCurso = contenidoIndex === contenidoFlat.length - 1;
+    const itemSiguiente = esUltimoDelCurso ? null : contenidoFlat[contenidoIndex + 1];
+
+    const terminaSubtema = !itemSiguiente || itemSiguiente.subtemaId !== itemActual.subtemaId;
+    const terminaTema = !itemSiguiente || itemSiguiente.temaId !== itemActual.temaId;
+    const terminaModulo = !itemSiguiente || itemSiguiente.moduloId !== itemActual.moduloId;
+
+    contenidoSiguienteBtn.disabled = true;
+    try {
+      if (terminaSubtema) {
+        await mostrarExamenSiHay({
+          nivel: 'subtema', nivelId: itemActual.subtemaId, cursoId: itemActual.cursoId,
+          titulo: `Repaso: ${itemActual.subtemaNombre}`, calificado: false
+        });
+      }
+      if (terminaTema) {
+        await mostrarExamenSiHay({
+          nivel: 'tema', nivelId: itemActual.temaId, cursoId: itemActual.cursoId,
+          titulo: `Examen del Tema: ${itemActual.temaNombre}`, calificado: true
+        });
+      }
+      if (terminaModulo) {
+        await mostrarExamenSiHay({
+          nivel: 'modulo', nivelId: itemActual.moduloId, cursoId: itemActual.cursoId,
+          titulo: `Examen del Módulo: ${itemActual.moduloNombre}`, calificado: true
+        });
+      }
+      if (esUltimoDelCurso) {
+        await mostrarExamenSiHay({
+          nivel: 'curso', nivelId: itemActual.cursoId, cursoId: itemActual.cursoId,
+          titulo: 'Examen Final del Curso', calificado: true
+        });
+        mostrarPantallaFinal();
+        return;
+      }
       contenidoIndex += 1;
       renderContenidoActual();
-    } else {
-      mostrarPantallaFinal();
+    } finally {
+      contenidoSiguienteBtn.disabled = false;
     }
   });
 
@@ -2240,6 +2277,181 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       abrirFormularioPregunta(panel, { nivel, nivelId, cursoId }, null);
     });
     ensurePreguntasListener(nivelId, listaEl);
+  }
+
+  // ---------- Exámenes para el Estudiante (usa el Banco de preguntas) ----------
+  // Se muestran en pantalla completa sobre el contenido. Subtema = repaso sin nota
+  // (se ve la corrección de inmediato). Tema / Módulo / Curso = con nota, mínimo 70/100
+  // para aprobar, y el resultado queda guardado en "examenesResultados".
+
+  function barajar(arr){
+    const copia = [...arr];
+    for (let i = copia.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copia[i], copia[j]] = [copia[j], copia[i]];
+    }
+    return copia;
+  }
+
+  async function cargarPreguntasPara(nivelId){
+    const snap = await getDocs(query(collection(db, 'preguntas'), where('nivelId', '==', nivelId)));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  async function guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado, calificado }){
+    if (!identidadActual || !identidadActual.uid) return;
+    try {
+      await setDoc(doc(db, 'examenesResultados', `${identidadActual.uid}_${nivel}_${nivelId}`), {
+        uid: identidadActual.uid,
+        nombre: identidadActual.nombre || '',
+        cursoId: cursoId,
+        nivel: nivel,
+        nivelId: nivelId,
+        titulo: titulo,
+        puntaje: puntaje,
+        aprobado: aprobado,
+        calificado: calificado,
+        fecha: serverTimestamp()
+      });
+    } catch (err) {
+      console.error('No se pudo guardar el resultado del examen:', err);
+    }
+  }
+
+  // Muestra el examen de un nivel si hay preguntas en el banco; si no hay ninguna,
+  // continúa de inmediato sin interrumpir al estudiante. Devuelve una Promesa que se
+  // resuelve cuando el estudiante termina (o cuando no había nada que mostrar).
+  function mostrarExamenSiHay({ nivel, nivelId, cursoId, titulo, calificado }){
+    return new Promise(async (resolve) => {
+      let preguntas;
+      try {
+        preguntas = await cargarPreguntasPara(nivelId);
+      } catch (err) {
+        resolve();
+        return;
+      }
+      if (!preguntas || preguntas.length === 0) { resolve(); return; }
+      preguntas = barajar(preguntas);
+
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed; inset:0; background:rgba(10,20,15,0.92); z-index:9999; overflow-y:auto; display:flex; justify-content:center; padding:30px 16px;';
+
+      const caja = document.createElement('div');
+      caja.style.cssText = 'background:#fff; border-radius:14px; max-width:640px; width:100%; padding:26px; height:fit-content; box-shadow:0 20px 50px rgba(0,0,0,0.3);';
+      overlay.appendChild(caja);
+      document.body.appendChild(overlay);
+
+      function pintarIntro(){
+        caja.innerHTML = `
+          <h3 style="font-family:'Source Serif 4', serif; margin:0 0 8px; color:var(--ink);">${calificado ? '📝 ' : '🔎 '}${titulo}</h3>
+          <p style="font-size:13.5px; color:var(--ink-soft); margin:0 0 18px;">
+            ${calificado
+              ? `Este examen tiene ${preguntas.length} pregunta(s) y lleva nota. Necesitas 70 de 100 para aprobarlo.`
+              : `Este es un repaso rápido de ${preguntas.length} pregunta(s) sobre lo que acabas de ver. No lleva nota, es solo para practicar.`}
+          </p>
+          <button type="button" class="examen-empezar-btn" style="padding:10px 18px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13.5px; font-weight:600; cursor:pointer;">Comenzar</button>
+        `;
+        caja.querySelector('.examen-empezar-btn').addEventListener('click', pintarPreguntas);
+      }
+
+      function pintarPreguntas(){
+        const preguntasHtml = preguntas.map((p, idx) => {
+          let opcionesHtml = '';
+          if (p.tipo === 'vf') {
+            opcionesHtml = `
+              <label style="display:flex; align-items:center; gap:7px; padding:6px 0; font-size:13.5px;"><input type="radio" name="examen-p${idx}" value="true"> Verdadero</label>
+              <label style="display:flex; align-items:center; gap:7px; padding:6px 0; font-size:13.5px;"><input type="radio" name="examen-p${idx}" value="false"> Falso</label>
+            `;
+          } else {
+            opcionesHtml = (p.opciones || []).map((op, i) => `
+              <label style="display:flex; align-items:center; gap:7px; padding:6px 0; font-size:13.5px;"><input type="radio" name="examen-p${idx}" value="${i}"> ${op}</label>
+            `).join('');
+          }
+          return `
+            <div style="margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--line);">
+              <div style="font-weight:700; font-size:14px; color:var(--ink); margin-bottom:6px;">${idx + 1}. ${p.enunciado}</div>
+              <div style="display:flex; flex-direction:column;">${opcionesHtml}</div>
+            </div>
+          `;
+        }).join('');
+
+        caja.innerHTML = `
+          <h3 style="font-family:'Source Serif 4', serif; margin:0 0 14px; color:var(--ink);">${titulo}</h3>
+          <form class="examen-form">${preguntasHtml}
+            <button type="submit" style="padding:10px 18px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13.5px; font-weight:600; cursor:pointer;">Enviar respuestas</button>
+          </form>
+        `;
+
+        caja.querySelector('.examen-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const form = e.target;
+          let correctas = 0;
+          const detalle = preguntas.map((p, idx) => {
+            const seleccionEl = form.querySelector(`input[name="examen-p${idx}"]:checked`);
+            let esCorrecta = false;
+            let valorElegido = null;
+            if (seleccionEl) {
+              if (p.tipo === 'vf') {
+                valorElegido = seleccionEl.value === 'true';
+                esCorrecta = valorElegido === p.respuestaCorrecta;
+              } else {
+                valorElegido = parseInt(seleccionEl.value, 10);
+                esCorrecta = valorElegido === p.respuestaCorrecta;
+              }
+            }
+            if (esCorrecta) correctas++;
+            return { p, esCorrecta };
+          });
+
+          const puntaje = Math.round((correctas / preguntas.length) * 100);
+          const aprobado = puntaje >= 70;
+
+          if (calificado) {
+            await guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado, calificado: true });
+          } else {
+            await guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado: null, calificado: false });
+          }
+
+          pintarResultado(puntaje, aprobado, detalle);
+        });
+      }
+
+      function pintarResultado(puntaje, aprobado, detalle){
+        let correccionHtml = '';
+        if (!calificado) {
+          correccionHtml = detalle.map(({ p, esCorrecta }) => `
+            <div style="padding:8px 0; border-bottom:1px solid var(--line); font-size:13px;">
+              <div style="font-weight:700; color:var(--ink); margin-bottom:3px;">${esCorrecta ? '✅' : '❌'} ${p.enunciado}</div>
+              ${!esCorrecta ? `<div style="color:var(--teal); font-size:12.5px;">Respuesta correcta: ${p.tipo === 'vf' ? (p.respuestaCorrecta ? 'Verdadero' : 'Falso') : p.opciones[p.respuestaCorrecta]}</div>` : ''}
+            </div>
+          `).join('');
+        }
+
+        caja.innerHTML = `
+          <div style="text-align:center;">
+            <div style="font-size:42px; margin-bottom:6px;">${!calificado ? '🔎' : (aprobado ? '🎉' : '📌')}</div>
+            <h3 style="font-family:'Source Serif 4', serif; margin:0 0 6px; color:var(--ink);">${calificado ? (aprobado ? '¡Aprobado!' : 'No alcanzó el mínimo') : 'Repaso completado'}</h3>
+            <p style="font-size:26px; font-weight:700; color:${!calificado ? 'var(--ink)' : (aprobado ? 'var(--teal)' : 'var(--danger)')}; margin:0 0 6px;">${puntaje} / 100</p>
+            ${calificado ? `<p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 18px;">El mínimo para aprobar es 70 de 100.</p>` : '<p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 18px;">Este repaso no lleva nota — revisa tus respuestas abajo.</p>'}
+          </div>
+          <div style="text-align:left; max-height:260px; overflow-y:auto; margin-bottom:18px;">${correccionHtml}</div>
+          <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+            ${calificado && !aprobado ? `<button type="button" class="examen-reintentar-btn" style="padding:10px 18px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:13.5px; font-weight:600; cursor:pointer;">Intentar de nuevo</button>` : ''}
+            <button type="button" class="examen-continuar-btn" style="padding:10px 18px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13.5px; font-weight:600; cursor:pointer;">Continuar →</button>
+          </div>
+        `;
+
+        const reintentarBtn = caja.querySelector('.examen-reintentar-btn');
+        if (reintentarBtn) reintentarBtn.addEventListener('click', pintarPreguntas);
+
+        caja.querySelector('.examen-continuar-btn').addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          resolve();
+        });
+      }
+
+      pintarIntro();
+    });
   }
 
   // ---------- Foro por Módulo (Estudiante y Profesor comparten esta lógica) ----------
