@@ -534,7 +534,7 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
-    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs
+    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs, increment
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // --- Configuración de ImgBB (para subir imágenes, sin necesitar tarjeta) ---
@@ -661,6 +661,26 @@
   let contenidoFlat = [];
   let contenidoIndex = 0;
   let estudianteCursoIdActual = null;
+  let intervaloPermanencia = null;
+
+  // Cuenta el tiempo que el estudiante pasa viendo el contenido del curso (en bloques de
+  // 60 segundos) y lo va sumando a su documento en "usuarios", para la fórmula de aprobación.
+  function iniciarConteoDePermanencia(){
+    detenerConteoDePermanencia();
+    intervaloPermanencia = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (!identidadActual || !identidadActual.uid) return;
+      updateDoc(doc(db, 'usuarios', identidadActual.uid), {
+        tiempoAcumuladoSegundos: increment(60)
+      }).catch((err) => console.error('No se pudo actualizar el tiempo de permanencia:', err));
+    }, 60000);
+  }
+  function detenerConteoDePermanencia(){
+    if (intervaloPermanencia) {
+      clearInterval(intervaloPermanencia);
+      intervaloPermanencia = null;
+    }
+  }
   const foroToggleBtn = document.getElementById('foroToggleBtn');
   const foroPanelEstudiante = document.getElementById('foroPanelEstudiante');
   let foroListenersActivos = new Set();
@@ -954,6 +974,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <button type="button" class="toggle-modulos-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">Módulos ▾</button>
         <button type="button" class="toggle-preguntas-btn" data-nivel="curso" data-nivel-id="${curso.id}" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">🧠 Preguntas (Examen Final) ▾</button>
         <button type="button" class="toggle-notas-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📊 Ver notas ▾</button>
+        <button type="button" class="toggle-formula-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">⚙️ Fórmula de aprobación ▾</button>
         <button type="button" class="link-curso-btn" data-curso-id="${curso.id}" data-curso-nombre="${curso.nombre}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--amber-deep); border-radius:8px; background:#fff; color:var(--amber-deep); font-size:12.5px; font-weight:600; cursor:pointer;">🔗 Generar enlace para estudiantes</button>
         <div class="link-status" data-linkstatus-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none; word-break:break-all;"></div>
 
@@ -967,6 +988,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         </div>
         <div class="preguntas-panel" data-nivel-id="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
         <div class="notas-panel" data-notas-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
+        <div class="formula-panel" data-formula-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
       `;
       courseList.appendChild(li);
 
@@ -1901,6 +1923,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   }
 
   function mostrarPantallaFinal(){
+    detenerConteoDePermanencia();
     if (ytPlayerActual) {
       try { ytPlayerActual.destroy(); } catch (err) {}
       ytPlayerActual = null;
@@ -1928,6 +1951,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       panelTitle.style.display = 'none';
       studentSection.style.borderTop = 'none';
       studentSection.style.paddingTop = '0';
+      iniciarConteoDePermanencia();
     } catch (err) {
       alert('No se pudo cargar el contenido del curso. Intenta de nuevo.');
       studentBeginBtn.disabled = false;
@@ -2460,9 +2484,26 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   // Muestra, por cada estudiante matriculado en el curso, los exámenes con nota que ha
   // presentado (Tema, Módulo, Final) y si aprobó cada uno (70/100 o más).
 
+  // Promedio de puntaje (0-100) de los exámenes calificados de un nivel para un estudiante.
+  // Si no ha presentado ninguno de ese nivel, cuenta como 0 (todavía no cumple esa parte).
+  function promedioPuntaje(resultados, uid, nivel){
+    const propios = resultados.filter(r => r.uid === uid && r.calificado && r.nivel === nivel);
+    if (propios.length === 0) return 0;
+    const suma = propios.reduce((acc, r) => acc + (r.puntaje || 0), 0);
+    return suma / propios.length;
+  }
+
   async function construirPanelNotas(panel, cursoId){
     panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Cargando notas…</p>';
     try {
+      const cursoSnap = await getDoc(doc(db, 'cursos', cursoId));
+      const curso = cursoSnap.exists() ? cursoSnap.data() : {};
+      const pesoPermanencia = curso.pesoPermanencia ?? 20;
+      const pesoTemas = curso.pesoTemas ?? 20;
+      const pesoModulo = curso.pesoModulo ?? 30;
+      const pesoFinal = curso.pesoFinal ?? 30;
+      const horasMinimas = curso.horasMinimas || 1;
+
       const estudiantesSnap = await getDocs(query(
         collection(db, 'usuarios'),
         where('cursoId', '==', cursoId),
@@ -2478,8 +2519,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       const resultadosSnap = await getDocs(query(collection(db, 'examenesResultados'), where('cursoId', '==', cursoId)));
       const resultados = resultadosSnap.docs.map(d => d.data());
 
-      panel.innerHTML = `<h5 style="margin:0 0 10px; font-size:13px; color:var(--ink);">📊 Notas de los estudiantes</h5>` +
-        estudiantes.map(est => {
+      panel.innerHTML = `
+        <h5 style="margin:0 0 4px; font-size:13px; color:var(--ink);">📊 Notas de los estudiantes</h5>
+        <p style="font-size:11px; color:#8493ab; margin:0 0 10px;">Fórmula actual: Permanencia ${pesoPermanencia}% · Exámenes de Temas ${pesoTemas}% · Examen de Módulo ${pesoModulo}% · Examen Final ${pesoFinal}% — mínimo 70/100 para aprobar el curso.</p>
+      ` + estudiantes.map(est => {
           const propios = resultados.filter(r => r.uid === est.uid && r.calificado);
           const ordenNivel = { tema: 1, modulo: 2, curso: 3 };
           propios.sort((a, b) => (ordenNivel[a.nivel] || 9) - (ordenNivel[b.nivel] || 9));
@@ -2493,17 +2536,112 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
                 </div>
               `).join('');
 
+          const horasAcumuladas = (est.tiempoAcumuladoSegundos || 0) / 3600;
+          const permanenciaPct = Math.min(100, (horasAcumuladas / horasMinimas) * 100);
+          const temasPct = promedioPuntaje(resultados, est.uid, 'tema');
+          const moduloPct = promedioPuntaje(resultados, est.uid, 'modulo');
+          const finalPct = promedioPuntaje(resultados, est.uid, 'curso');
+
+          const notaFinal = Math.round(
+            (pesoPermanencia / 100) * permanenciaPct +
+            (pesoTemas / 100) * temasPct +
+            (pesoModulo / 100) * moduloPct +
+            (pesoFinal / 100) * finalPct
+          );
+          const aprobadoCurso = notaFinal >= 70;
+
           return `
             <div style="padding:10px; background:#fff; border:1px solid var(--line); border-radius:8px; margin-bottom:8px;">
-              <div style="font-weight:700; font-size:13px; color:var(--ink);">${est.nombre || '(sin nombre)'}</div>
-              <div style="font-size:11.5px; color:#8493ab; margin-bottom:2px;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '—'}</div>
-              ${filasHtml}
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div>
+                  <div style="font-weight:700; font-size:13px; color:var(--ink);">${est.nombre || '(sin nombre)'}</div>
+                  <div style="font-size:11.5px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '—'}</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:16px; font-weight:700; color:${aprobadoCurso ? 'var(--teal)' : 'var(--danger)'};">${notaFinal}/100</div>
+                  <div style="font-size:11px; color:${aprobadoCurso ? 'var(--teal)' : 'var(--danger)'};">${aprobadoCurso ? 'Aprobó el curso' : 'Aún no aprueba'}</div>
+                </div>
+              </div>
+              <div style="font-size:11px; color:#8493ab; margin-top:6px;">
+                Permanencia: ${Math.round(permanenciaPct)}% (${horasAcumuladas.toFixed(1)} de ${horasMinimas} h) · Temas: ${Math.round(temasPct)}% · Módulo: ${Math.round(moduloPct)}% · Final: ${Math.round(finalPct)}%
+              </div>
+              <div style="margin-top:6px;">${filasHtml}</div>
             </div>
           `;
         }).join('');
     } catch (err) {
       console.error('Error al cargar notas:', err);
       panel.innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudieron cargar las notas. Intenta de nuevo.</p>';
+    }
+  }
+
+  // Panel para que el Administrador edite (o elimine, dejándolo en 0) los porcentajes
+  // de la fórmula de aprobación del curso.
+  async function construirPanelFormula(panel, cursoId){
+    panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Cargando…</p>';
+    try {
+      const cursoSnap = await getDoc(doc(db, 'cursos', cursoId));
+      const curso = cursoSnap.exists() ? cursoSnap.data() : {};
+      const valores = {
+        permanencia: curso.pesoPermanencia ?? 20,
+        temas: curso.pesoTemas ?? 20,
+        modulo: curso.pesoModulo ?? 30,
+        final: curso.pesoFinal ?? 30
+      };
+
+      panel.innerHTML = `
+        <h5 style="margin:0 0 6px; font-size:13px; color:var(--ink);">⚙️ Fórmula de aprobación del curso</h5>
+        <p style="font-size:11.5px; color:#8493ab; margin:0 0 10px;">Pon el porcentaje de cada parte (usa 0 para eliminar un ítem). Lo ideal es que sumen 100.</p>
+        <form class="formula-form" style="display:flex; flex-direction:column; gap:8px;">
+          <label style="font-size:12px; color:var(--ink-soft);">Permanencia en la plataforma (%)
+            <input type="number" class="formula-permanencia" min="0" max="100" value="${valores.permanencia}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
+          </label>
+          <label style="font-size:12px; color:var(--ink-soft);">Exámenes de los Temas (%)
+            <input type="number" class="formula-temas" min="0" max="100" value="${valores.temas}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
+          </label>
+          <label style="font-size:12px; color:var(--ink-soft);">Examen del Módulo (%)
+            <input type="number" class="formula-modulo" min="0" max="100" value="${valores.modulo}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
+          </label>
+          <label style="font-size:12px; color:var(--ink-soft);">Examen Final (%)
+            <input type="number" class="formula-final" min="0" max="100" value="${valores.final}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
+          </label>
+          <div class="formula-suma-aviso" style="font-size:11.5px; color:var(--danger); display:none;">Ojo: estos porcentajes no suman 100. Puedes guardarlos igual, pero revisa que sea lo que quieres.</div>
+          <button type="submit" style="align-self:flex-start; padding:7px 14px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar fórmula</button>
+          <div class="formula-status" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓</div>
+        </form>
+      `;
+
+      const form = panel.querySelector('.formula-form');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const permanencia = parseInt(panel.querySelector('.formula-permanencia').value, 10) || 0;
+        const temas = parseInt(panel.querySelector('.formula-temas').value, 10) || 0;
+        const modulo = parseInt(panel.querySelector('.formula-modulo').value, 10) || 0;
+        const final = parseInt(panel.querySelector('.formula-final').value, 10) || 0;
+        const aviso = panel.querySelector('.formula-suma-aviso');
+        aviso.style.display = (permanencia + temas + modulo + final !== 100) ? 'block' : 'none';
+
+        const btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          await updateDoc(doc(db, 'cursos', cursoId), {
+            pesoPermanencia: permanencia,
+            pesoTemas: temas,
+            pesoModulo: modulo,
+            pesoFinal: final
+          });
+          const status = panel.querySelector('.formula-status');
+          status.style.display = 'block';
+          setTimeout(() => { status.style.display = 'none'; }, 2500);
+        } catch (err) {
+          alert('No se pudo guardar la fórmula. Intenta de nuevo.');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    } catch (err) {
+      console.error('Error al cargar la fórmula:', err);
+      panel.innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudo cargar la fórmula. Intenta de nuevo.</p>';
     }
   }
 
@@ -2959,6 +3097,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   });
 
   logoutBtn.addEventListener('click', async () => {
+    detenerConteoDePermanencia();
     await signOut(auth);
   });
 
@@ -3076,6 +3215,19 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     panel.style.display = abierto ? 'none' : 'block';
     if (!abierto) {
       construirPanelNotas(panel, cursoId);
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.toggle-formula-btn');
+    if (!btn) return;
+    const cursoId = btn.dataset.cursoId;
+    const panel = document.querySelector(`.formula-panel[data-formula-for="${cursoId}"]`);
+    if (!panel) return;
+    const abierto = panel.style.display === 'block';
+    panel.style.display = abierto ? 'none' : 'block';
+    if (!abierto) {
+      construirPanelFormula(panel, cursoId);
     }
   });
 
