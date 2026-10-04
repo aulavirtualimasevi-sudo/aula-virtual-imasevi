@@ -2404,7 +2404,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 
-  async function guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado, calificado }){
+  async function guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado, calificado, detalle }){
     if (!identidadActual || !identidadActual.uid) return;
     try {
       await setDoc(doc(db, 'examenesResultados', `${identidadActual.uid}_${nivel}_${nivelId}`), {
@@ -2417,6 +2417,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         puntaje: puntaje,
         aprobado: aprobado,
         calificado: calificado,
+        detalle: detalle || [],
         fecha: serverTimestamp()
       });
     } catch (err) {
@@ -2506,16 +2507,29 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
               }
             }
             if (esCorrecta) correctas++;
-            return { p, esCorrecta };
+            return { p, esCorrecta, valorElegido };
           });
 
           const puntaje = Math.round((correctas / preguntas.length) * 100);
           const aprobado = puntaje >= 70;
 
+          // Versión simple (sin referencias a objetos) de cada pregunta, para poder
+          // guardarla en Firestore y mostrarla luego en el examen impreso.
+          const detalleParaGuardar = detalle.map(({ p, esCorrecta, valorElegido }) => ({
+            enunciado: p.enunciado,
+            tipo: p.tipo,
+            opciones: p.opciones || null,
+            respuestaCorrectaTexto: p.tipo === 'vf' ? (p.respuestaCorrecta ? 'Verdadero' : 'Falso') : p.opciones[p.respuestaCorrecta],
+            respuestaElegidaTexto: valorElegido === null
+              ? '(sin responder)'
+              : (p.tipo === 'vf' ? (valorElegido ? 'Verdadero' : 'Falso') : p.opciones[valorElegido]),
+            esCorrecta
+          }));
+
           if (calificado) {
-            await guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado, calificado: true });
+            await guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado, calificado: true, detalle: detalleParaGuardar });
           } else {
-            await guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado: null, calificado: false });
+            await guardarResultadoExamen({ nivel, nivelId, cursoId, titulo, puntaje, aprobado: null, calificado: false, detalle: detalleParaGuardar });
           }
 
           pintarResultado(puntaje, aprobado, detalle);
@@ -2619,7 +2633,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
                   cursoNombre: curso.nombre || '',
                   tituloExamen: r.titulo,
                   puntaje: r.puntaje,
-                  aprobado: r.aprobado
+                  aprobado: r.aprobado,
+                  detalle: r.detalle || []
                 });
                 return `
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid var(--line);">
@@ -3074,7 +3089,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
   // Abre una ventana con el examen en formato de una sola hoja, con el encabezado manual
   // arriba y los datos del estudiante, listo para imprimir. Solo lo usa el Administrador.
-  async function imprimirResultadoExamen({ nombreEstudiante, tipoDocumentoLabel, numeroDocumento, cursoNombre, tituloExamen, puntaje, aprobado }){
+  async function imprimirResultadoExamen({ nombreEstudiante, tipoDocumentoLabel, numeroDocumento, cursoNombre, tituloExamen, puntaje, aprobado, detalle }){
     let encabezadoTexto = '';
     try {
       const snap = await getDoc(doc(db, 'configuracion', 'encabezadoImpresion'));
@@ -3089,6 +3104,25 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
     const fecha = new Date().toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
 
+    // El tamaño de letra de las preguntas se ajusta según cuántas haya, para que todo
+    // quepa en una sola hoja tamaño carta.
+    const cantidad = (detalle || []).length;
+    let fuentePregunta = 11.5;
+    let espaciado = 7;
+    if (cantidad > 10) { fuentePregunta = 10; espaciado = 5; }
+    if (cantidad > 16) { fuentePregunta = 9; espaciado = 4; }
+    if (cantidad > 24) { fuentePregunta = 8; espaciado = 3; }
+
+    const preguntasHtml = (detalle || []).map((d, i) => `
+      <div class="pregunta">
+        <span class="num">${i + 1}.</span> ${d.enunciado}
+        <div class="respuestas">
+          <span class="correcta">✔ Correcta: ${d.respuestaCorrectaTexto}</span>
+          ${!d.esCorrecta ? `<span class="elegida">✘ Eligió: ${d.respuestaElegidaTexto}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+
     ventana.document.write(`
       <!DOCTYPE html>
       <html lang="es">
@@ -3096,18 +3130,25 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <meta charset="UTF-8">
         <title>Examen — ${nombreEstudiante}</title>
         <style>
-          @page { size: letter; margin: 2cm; }
-          body { font-family: 'Georgia', 'Times New Roman', serif; color: #16233d; padding: 20px; }
-          .encabezado { white-space: pre-wrap; text-align: center; border-bottom: 2px solid #025526; padding-bottom: 14px; margin-bottom: 24px; font-size: 14px; }
-          h1 { font-size: 20px; color: #025526; text-align: center; margin: 0 0 4px; }
-          .subtitulo { text-align: center; color: #5b6b87; font-size: 12.5px; margin: 0 0 26px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 26px; }
-          td { padding: 9px 10px; border: 1px solid #c3cbda; font-size: 13.5px; }
-          td.etiqueta { font-weight: 700; width: 38%; background: #f4f7fb; }
-          .resultado { text-align: center; margin-top: 30px; }
-          .puntaje { font-size: 38px; font-weight: 700; color: ${aprobado ? '#43a22e' : '#b3261e'}; margin: 0; }
-          .estado { font-size: 15px; font-weight: 700; color: ${aprobado ? '#43a22e' : '#b3261e'}; margin: 4px 0 0; }
-          .fecha { text-align: right; font-size: 11.5px; color: #8493ab; margin-top: 40px; }
+          @page { size: letter; margin: 1.5cm; }
+          * { box-sizing: border-box; }
+          body { font-family: 'Georgia', 'Times New Roman', serif; color: #16233d; padding: 0; }
+          .encabezado { white-space: pre-wrap; text-align: center; border-bottom: 2px solid #025526; padding-bottom: 10px; margin-bottom: 14px; font-size: 12.5px; }
+          h1 { font-size: 17px; color: #025526; text-align: center; margin: 0 0 2px; }
+          .subtitulo { text-align: center; color: #5b6b87; font-size: 11px; margin: 0 0 12px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+          td { padding: 5px 8px; border: 1px solid #c3cbda; font-size: 11.5px; }
+          td.etiqueta { font-weight: 700; width: 32%; background: #f4f7fb; }
+          .resultado { display: flex; justify-content: center; align-items: baseline; gap: 10px; margin: 10px 0 14px; }
+          .puntaje { font-size: 24px; font-weight: 700; color: ${aprobado ? '#43a22e' : '#b3261e'}; margin: 0; }
+          .estado { font-size: 13px; font-weight: 700; color: ${aprobado ? '#43a22e' : '#b3261e'}; margin: 0; }
+          .preguntas-titulo { font-size: 12px; font-weight: 700; color: var(--ink); border-bottom: 1px solid #c3cbda; padding-bottom: 4px; margin-bottom: ${espaciado}px; }
+          .pregunta { font-size: ${fuentePregunta}px; line-height: 1.35; margin-bottom: ${espaciado}px; }
+          .pregunta .num { font-weight: 700; }
+          .respuestas { padding-left: 14px; }
+          .respuestas .correcta { color: #1f7a3d; margin-right: 14px; }
+          .respuestas .elegida { color: #b3261e; }
+          .fecha { text-align: right; font-size: 10px; color: #8493ab; margin-top: 10px; }
         </style>
       </head>
       <body>
@@ -3115,15 +3156,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <h1>Resultado de Examen</h1>
         <p class="subtitulo">Aula Virtual IMASEVI</p>
         <table>
-          <tr><td class="etiqueta">Nombre completo</td><td>${nombreEstudiante}</td></tr>
-          <tr><td class="etiqueta">${tipoDocumentoLabel}</td><td>${numeroDocumento || '—'}</td></tr>
-          <tr><td class="etiqueta">Curso</td><td>${cursoNombre}</td></tr>
-          <tr><td class="etiqueta">Examen</td><td>${tituloExamen}</td></tr>
+          <tr><td class="etiqueta">Nombre completo</td><td>${nombreEstudiante}</td><td class="etiqueta">${tipoDocumentoLabel}</td><td>${numeroDocumento || '—'}</td></tr>
+          <tr><td class="etiqueta">Curso</td><td>${cursoNombre}</td><td class="etiqueta">Examen</td><td>${tituloExamen}</td></tr>
         </table>
         <div class="resultado">
           <p class="puntaje">${puntaje} / 100</p>
           <p class="estado">${aprobado ? 'APROBADO' : 'NO APROBADO'}</p>
         </div>
+        ${cantidad > 0 ? `<div class="preguntas-titulo">Preguntas y respuestas</div>${preguntasHtml}` : ''}
         <p class="fecha">Impreso el ${fecha}</p>
       </body>
       </html>
