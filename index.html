@@ -502,6 +502,14 @@
         <div id="bienvenidaStatus" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓ — ya se aplica a todos los cursos.</div>
       </div>
 
+      <h3>🖨️ Encabezado para imprimir exámenes</h3>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:22px; padding-bottom:22px; border-bottom:1px solid var(--line);">
+        <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Escribe aquí el encabezado (nombre del instituto, dirección, etc.) tal como quieres que salga impreso arriba de cada examen.</label>
+        <textarea id="encabezadoImpresionInput" rows="4" placeholder="Ej. IMASEVI — Instituto de Formación Vial&#10;Dirección / teléfono" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
+        <button type="button" id="guardarEncabezadoBtn" style="align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar encabezado</button>
+        <div id="encabezadoStatus" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓ — ya se usa en los exámenes impresos.</div>
+      </div>
+
       <h3>Cursos / Asignaturas</h3>
       <form class="course-form" id="courseForm">
         <div class="field">
@@ -716,6 +724,10 @@
   const bienvenidaVideoInput = document.getElementById('bienvenidaVideoInput');
   const guardarBienvenidaBtn = document.getElementById('guardarBienvenidaBtn');
   const bienvenidaStatus = document.getElementById('bienvenidaStatus');
+  const encabezadoImpresionInput = document.getElementById('encabezadoImpresionInput');
+  const guardarEncabezadoBtn = document.getElementById('guardarEncabezadoBtn');
+  const encabezadoStatus = document.getElementById('encabezadoStatus');
+  let encabezadoCargado = false;
 
   const MENSAJE_BIENVENIDA_POR_DEFECTO =
 `¡Bienvenidos al Aula Virtual IMASEVI!
@@ -2544,6 +2556,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       const resultadosSnap = await getDocs(query(collection(db, 'examenesResultados'), where('cursoId', '==', cursoId)));
       const resultados = resultadosSnap.docs.map(d => d.data());
+      const resultadosParaImprimir = [];
 
       panel.innerHTML = `
         <h5 style="margin:0 0 4px; font-size:13px; color:var(--ink);">📊 Notas de los estudiantes</h5>
@@ -2555,12 +2568,27 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
           const filasHtml = propios.length === 0
             ? '<div style="font-size:12px; color:#8493ab; padding:4px 0;">Todavía no ha presentado ningún examen calificado.</div>'
-            : propios.map(r => `
-                <div style="display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid var(--line);">
+            : propios.map(r => {
+                const idx = resultadosParaImprimir.length;
+                resultadosParaImprimir.push({
+                  nombreEstudiante: est.nombre || '(sin nombre)',
+                  tipoDocumentoLabel: est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula',
+                  numeroDocumento: est.numeroDocumento || '',
+                  cursoNombre: curso.nombre || '',
+                  tituloExamen: r.titulo,
+                  puntaje: r.puntaje,
+                  aprobado: r.aprobado
+                });
+                return `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid var(--line);">
                   <span>${r.titulo}</span>
-                  <span style="font-weight:700; color:${r.aprobado ? 'var(--teal)' : 'var(--danger)'};">${r.puntaje}/100 ${r.aprobado ? '✓ Aprobado' : '✗ No aprobado'}</span>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-weight:700; color:${r.aprobado ? 'var(--teal)' : 'var(--danger)'};">${r.puntaje}/100 ${r.aprobado ? '✓ Aprobado' : '✗ No aprobado'}</span>
+                    <button type="button" class="examen-imprimir-btn" data-print-idx="${idx}" title="Imprimir este examen" style="background:none; border:1px solid var(--line); border-radius:6px; padding:3px 6px; cursor:pointer; font-size:11px;">🖨️</button>
+                  </div>
                 </div>
-              `).join('');
+              `;
+              }).join('');
 
           const horasAcumuladas = (est.tiempoAcumuladoSegundos || 0) / 3600;
           const permanenciaPct = Math.min(100, (horasAcumuladas / horasMinimas) * 100);
@@ -2595,6 +2623,13 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             </div>
           `;
         }).join('');
+
+      panel.querySelectorAll('.examen-imprimir-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const datos = resultadosParaImprimir[parseInt(btn.dataset.printIdx, 10)];
+          if (datos) imprimirResultadoExamen(datos);
+        });
+      });
     } catch (err) {
       console.error('Error al cargar notas:', err);
       panel.innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudieron cargar las notas. Intenta de nuevo.</p>';
@@ -2968,6 +3003,94 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     }
   });
 
+  async function cargarEncabezadoImpresion(){
+    if (encabezadoCargado) return;
+    encabezadoCargado = true;
+    try {
+      const snap = await getDoc(doc(db, 'configuracion', 'encabezadoImpresion'));
+      encabezadoImpresionInput.value = snap.exists() ? (snap.data().texto || '') : '';
+    } catch (err) {
+      encabezadoImpresionInput.value = '';
+    }
+  }
+
+  guardarEncabezadoBtn.addEventListener('click', async () => {
+    guardarEncabezadoBtn.disabled = true;
+    try {
+      await setDoc(doc(db, 'configuracion', 'encabezadoImpresion'), {
+        texto: encabezadoImpresionInput.value.trim(),
+        actualizado: serverTimestamp()
+      });
+      encabezadoStatus.style.display = 'block';
+      setTimeout(() => { encabezadoStatus.style.display = 'none'; }, 2500);
+    } catch (err) {
+      alert('No se pudo guardar el encabezado. Intenta de nuevo.');
+    } finally {
+      guardarEncabezadoBtn.disabled = false;
+    }
+  });
+
+  // Abre una ventana con el examen en formato de una sola hoja, con el encabezado manual
+  // arriba y los datos del estudiante, listo para imprimir. Solo lo usa el Administrador.
+  async function imprimirResultadoExamen({ nombreEstudiante, tipoDocumentoLabel, numeroDocumento, cursoNombre, tituloExamen, puntaje, aprobado }){
+    let encabezadoTexto = '';
+    try {
+      const snap = await getDoc(doc(db, 'configuracion', 'encabezadoImpresion'));
+      encabezadoTexto = snap.exists() ? (snap.data().texto || '') : '';
+    } catch (err) { /* se imprime sin encabezado si no se pudo cargar */ }
+
+    const ventana = window.open('', '_blank');
+    if (!ventana) {
+      alert('El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio e intenta de nuevo.');
+      return;
+    }
+
+    const fecha = new Date().toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Examen — ${nombreEstudiante}</title>
+        <style>
+          @page { size: letter; margin: 2cm; }
+          body { font-family: 'Georgia', 'Times New Roman', serif; color: #16233d; padding: 20px; }
+          .encabezado { white-space: pre-wrap; text-align: center; border-bottom: 2px solid #025526; padding-bottom: 14px; margin-bottom: 24px; font-size: 14px; }
+          h1 { font-size: 20px; color: #025526; text-align: center; margin: 0 0 4px; }
+          .subtitulo { text-align: center; color: #5b6b87; font-size: 12.5px; margin: 0 0 26px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 26px; }
+          td { padding: 9px 10px; border: 1px solid #c3cbda; font-size: 13.5px; }
+          td.etiqueta { font-weight: 700; width: 38%; background: #f4f7fb; }
+          .resultado { text-align: center; margin-top: 30px; }
+          .puntaje { font-size: 38px; font-weight: 700; color: ${aprobado ? '#43a22e' : '#b3261e'}; margin: 0; }
+          .estado { font-size: 15px; font-weight: 700; color: ${aprobado ? '#43a22e' : '#b3261e'}; margin: 4px 0 0; }
+          .fecha { text-align: right; font-size: 11.5px; color: #8493ab; margin-top: 40px; }
+        </style>
+      </head>
+      <body>
+        ${encabezadoTexto ? `<div class="encabezado">${encabezadoTexto}</div>` : ''}
+        <h1>Resultado de Examen</h1>
+        <p class="subtitulo">Aula Virtual IMASEVI</p>
+        <table>
+          <tr><td class="etiqueta">Nombre completo</td><td>${nombreEstudiante}</td></tr>
+          <tr><td class="etiqueta">${tipoDocumentoLabel}</td><td>${numeroDocumento || '—'}</td></tr>
+          <tr><td class="etiqueta">Curso</td><td>${cursoNombre}</td></tr>
+          <tr><td class="etiqueta">Examen</td><td>${tituloExamen}</td></tr>
+        </table>
+        <div class="resultado">
+          <p class="puntaje">${puntaje} / 100</p>
+          <p class="estado">${aprobado ? 'APROBADO' : 'NO APROBADO'}</p>
+        </div>
+        <p class="fecha">Impreso el ${fecha}</p>
+      </body>
+      </html>
+    `);
+    ventana.document.close();
+    ventana.focus();
+    setTimeout(() => ventana.print(), 300);
+  }
+
   function iniciarListaCursos(){
     if (cursosListenerActivo) return;
     cursosListenerActivo = true;
@@ -3158,6 +3281,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       adminSection.style.display = 'block';
       iniciarListaCursos();
       cargarFormularioBienvenida();
+      cargarEncabezadoImpresion();
     } else if (rol === 'estudiante') {
       adminSection.style.display = 'none';
       const cursoId = snap.data().cursoId;
