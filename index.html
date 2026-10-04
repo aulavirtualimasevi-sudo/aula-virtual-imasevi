@@ -448,9 +448,14 @@
         <h3 id="studentCourseName">Curso</h3>
         <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify;"></p>
         <div id="studentVideoContainer"></div>
+        <div id="studentTiempoAcumulado" style="display:none; margin-top:12px; padding:9px 12px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12.5px; color:var(--ink-soft);"></div>
         <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Iniciar curso</button>
       </div>
       <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Progreso del curso</span>
+          <span id="contenidoTiempoActual" style="font-size:11.5px; color:#8493ab; white-space:nowrap;">⏱️ 0h 00m</span>
+        </div>
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
           <div style="flex:1; height:6px; background:var(--line); border-radius:999px; overflow:hidden;">
             <div id="contenidoProgresoBarra" style="height:100%; width:0%; background:var(--amber); border-radius:999px; transition:width .25s ease;"></div>
@@ -670,6 +675,18 @@
   let contenidoIndex = 0;
   let estudianteCursoIdActual = null;
   let intervaloPermanencia = null;
+  let tiempoAcumuladoBaseSegundos = 0;
+  let horasMinimasActual = 0;
+  let segundosMostrados = 0;
+  let intervaloRelojVisible = null;
+  const studentTiempoAcumulado = document.getElementById('studentTiempoAcumulado');
+  const contenidoTiempoActual = document.getElementById('contenidoTiempoActual');
+
+  function formatearHorasMinutos(segundos){
+    const horas = Math.floor(segundos / 3600);
+    const minutos = Math.floor((segundos % 3600) / 60);
+    return `${horas}h ${String(minutos).padStart(2, '0')}m`;
+  }
 
   // Cuenta el tiempo que el estudiante pasa viendo el contenido del curso (en bloques de
   // 60 segundos) y lo va sumando a su documento en "usuarios", para la fórmula de aprobación.
@@ -690,6 +707,28 @@
     }
   }
 
+  // Reloj visible para el estudiante: muestra en vivo el tiempo que lleva en la plataforma
+  // (no se guarda aquí — eso lo hace iniciarConteoDePermanencia por separado cada 60s).
+  function iniciarRelojVisible(){
+    detenerRelojVisible();
+    segundosMostrados = tiempoAcumuladoBaseSegundos;
+    actualizarRelojVisible();
+    intervaloRelojVisible = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      segundosMostrados += 1;
+      actualizarRelojVisible();
+    }, 1000);
+  }
+  function detenerRelojVisible(){
+    if (intervaloRelojVisible) {
+      clearInterval(intervaloRelojVisible);
+      intervaloRelojVisible = null;
+    }
+  }
+  function actualizarRelojVisible(){
+    if (contenidoTiempoActual) contenidoTiempoActual.textContent = `⏱️ ${formatearHorasMinutos(segundosMostrados)}`;
+  }
+
   // ---------- Cierre de sesión por inactividad (10 minutos) ----------
   // Si la plataforma queda sin uso (sin mover el mouse, escribir, tocar la pantalla, etc.)
   // por 10 minutos seguidos, se cierra la sesión sola. Ese tiempo inactivo no se cuenta
@@ -706,6 +745,7 @@
   async function cerrarPorInactividad(){
     if (!auth.currentUser) return;
     detenerConteoDePermanencia();
+    detenerRelojVisible();
     try { sessionStorage.setItem('imasevi_cierre_por_inactividad', 'true'); } catch (err) {}
     await signOut(auth);
   }
@@ -1844,7 +1884,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     // Barra de progreso y contador
     const porcentaje = Math.round(((contenidoIndex + 1) / contenidoFlat.length) * 100);
     contenidoProgresoBarra.style.width = `${porcentaje}%`;
-    contenidoPosicion.textContent = `${contenidoIndex + 1} / ${contenidoFlat.length}`;
+    contenidoPosicion.textContent = `${porcentaje}% · ${contenidoIndex + 1}/${contenidoFlat.length}`;
 
     // Encabezado de sección: solo se muestra al entrar a un Subtema nuevo, para dar sentido de avance
     if (esInicioDeSubtema) {
@@ -1962,6 +2002,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
   function mostrarPantallaFinal(){
     detenerConteoDePermanencia();
+    detenerRelojVisible();
     if (ytPlayerActual) {
       try { ytPlayerActual.destroy(); } catch (err) {}
       ytPlayerActual = null;
@@ -1970,7 +2011,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenidoNavBar.style.display = 'none';
     contenidoFinal.style.display = 'block';
     contenidoProgresoBarra.style.width = '100%';
-    contenidoPosicion.textContent = `${contenidoFlat.length} / ${contenidoFlat.length}`;
+    contenidoPosicion.textContent = `100% · ${contenidoFlat.length}/${contenidoFlat.length}`;
   }
 
   studentBeginBtn.addEventListener('click', async () => {
@@ -1990,6 +2031,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       studentSection.style.borderTop = 'none';
       studentSection.style.paddingTop = '0';
       iniciarConteoDePermanencia();
+      iniciarRelojVisible();
     } catch (err) {
       alert('No se pudo cargar el contenido del curso. Intenta de nuevo.');
       studentBeginBtn.disabled = false;
@@ -3247,6 +3289,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
   logoutBtn.addEventListener('click', async () => {
     detenerConteoDePermanencia();
+    detenerRelojVisible();
     await signOut(auth);
   });
 
@@ -3310,6 +3353,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             studentContentPlaceholder.style.display = 'none';
             studentBeginBtn.style.display = 'inline-block';
             estudianteCursoIdActual = cursoId;
+            horasMinimasActual = curso.horasMinimas || 0;
+            tiempoAcumuladoBaseSegundos = snap.data().tiempoAcumuladoSegundos || 0;
+            studentTiempoAcumulado.style.display = 'block';
+            studentTiempoAcumulado.textContent = `⏱️ Tiempo acumulado en este curso: ${formatearHorasMinutos(tiempoAcumuladoBaseSegundos)} (mínimo requerido: ${horasMinimasActual} h)`;
           } else {
             panelSubtitle.style.display = 'block';
             panelSubtitle.textContent = 'Tu curso ya no está disponible.';
@@ -3386,6 +3433,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
     if (!user) {
       detenerConteoDePermanencia();
+      detenerRelojVisible();
       panelView.style.display = 'none';
       loginView.style.display = 'block';
       submitBtn.disabled = false;
