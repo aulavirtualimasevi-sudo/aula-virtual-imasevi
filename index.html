@@ -681,6 +681,32 @@
       intervaloPermanencia = null;
     }
   }
+
+  // ---------- Cierre de sesión por inactividad (10 minutos) ----------
+  // Si la plataforma queda sin uso (sin mover el mouse, escribir, tocar la pantalla, etc.)
+  // por 10 minutos seguidos, se cierra la sesión sola. Ese tiempo inactivo no se cuenta
+  // como permanencia (el contador simplemente se detiene mientras tanto) y, al volver a
+  // entrar, se le explica al usuario por qué se cerró.
+  const LIMITE_INACTIVIDAD_MS = 10 * 60 * 1000;
+  let temporizadorInactividad = null;
+
+  function reiniciarTemporizadorInactividad(){
+    if (temporizadorInactividad) clearTimeout(temporizadorInactividad);
+    temporizadorInactividad = setTimeout(cerrarPorInactividad, LIMITE_INACTIVIDAD_MS);
+  }
+
+  async function cerrarPorInactividad(){
+    if (!auth.currentUser) return;
+    detenerConteoDePermanencia();
+    try { sessionStorage.setItem('imasevi_cierre_por_inactividad', 'true'); } catch (err) {}
+    await signOut(auth);
+  }
+
+  ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evento => {
+    document.addEventListener(evento, reiniciarTemporizadorInactividad, { passive: true });
+  });
+  reiniciarTemporizadorInactividad();
+
   const foroToggleBtn = document.getElementById('foroToggleBtn');
   const foroPanelEstudiante = document.getElementById('foroPanelEstudiante');
   let foroListenersActivos = new Set();
@@ -3235,10 +3261,17 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     loadingScreen.style.display = 'none';
 
     if (!user) {
+      detenerConteoDePermanencia();
       panelView.style.display = 'none';
       loginView.style.display = 'block';
       submitBtn.disabled = false;
       renderRoleUI();
+      let cerradoPorInactividad = false;
+      try { cerradoPorInactividad = sessionStorage.getItem('imasevi_cierre_por_inactividad') === 'true'; } catch (err) {}
+      if (cerradoPorInactividad) {
+        try { sessionStorage.removeItem('imasevi_cierre_por_inactividad'); } catch (err) {}
+        showInfo('Tu sesión se cerró automáticamente por 10 minutos sin actividad. Ese tiempo no se contó como permanencia — vuelve a iniciar sesión para continuar.');
+      }
       return;
     }
 
