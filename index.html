@@ -722,8 +722,12 @@
 
   // Revisa si ya pasó el límite de inactividad real; si no, acredita el tiempo transcurrido
   // como permanencia. Se llama periódicamente y también apenas la pestaña vuelve a verse.
+  // Esto SOLO aplica al Estudiante: el Administrador y el Profesor trabajan de otra forma
+  // (consultando, revisando, escribiendo contenido con pausas largas) y nunca deben
+  // quedar desconectados por inactividad.
   function revisarPermanenciaYActividad(){
     if (!auth.currentUser) return;
+    if (!identidadActual || identidadActual.rolCrudo !== 'estudiante') return;
     const ahora = Date.now();
     const inactivoPorMs = ahora - ultimaActividadTs;
     if (inactivoPorMs >= LIMITE_INACTIVIDAD_MS) {
@@ -777,6 +781,7 @@
   // cuenta como permanencia, y al volver a entrar se le explica al usuario por qué se cerró.
   async function cerrarPorInactividad(){
     if (!auth.currentUser) return;
+    if (!identidadActual || identidadActual.rolCrudo !== 'estudiante') return;
     detenerConteoDePermanencia();
     detenerRelojVisible();
     try { sessionStorage.setItem('imasevi_cierre_por_inactividad', 'true'); } catch (err) {}
@@ -801,7 +806,7 @@
   const foroToggleBtn = document.getElementById('foroToggleBtn');
   const foroPanelEstudiante = document.getElementById('foroPanelEstudiante');
   let foroListenersActivos = new Set();
-  let identidadActual = { uid: null, nombre: '', rol: '' };
+  let identidadActual = { uid: null, nombre: '', rol: '', rolCrudo: '' };
   let ytPlayerActual = null;
   const bienvenidaMensajeInput = document.getElementById('bienvenidaMensajeInput');
   const bienvenidaVideoInput = document.getElementById('bienvenidaVideoInput');
@@ -1093,7 +1098,6 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <div class="assign-status" data-status-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none;">Profesor asignado ✓</div>
 
         <button type="button" class="toggle-modulos-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">Módulos ▾</button>
-        <button type="button" class="toggle-preguntas-btn" data-nivel="curso" data-nivel-id="${curso.id}" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">🧠 Preguntas (Examen Final) ▾</button>
         <button type="button" class="toggle-notas-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📊 Ver notas ▾</button>
         <button type="button" class="toggle-formula-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">⚙️ Fórmula de aprobación ▾</button>
         <button type="button" class="link-curso-btn" data-curso-id="${curso.id}" data-curso-nombre="${curso.nombre}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--amber-deep); border-radius:8px; background:#fff; color:var(--amber-deep); font-size:12.5px; font-weight:600; cursor:pointer;">🔗 Generar enlace para estudiantes</button>
@@ -1107,7 +1111,6 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           <ul class="modulos-list" data-list-for="${curso.id}" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;"></ul>
           <div class="modulos-empty" data-empty-for="${curso.id}" style="font-size:12.5px; color:#8493ab; display:none;">Todavía no hay módulos en este curso.</div>
         </div>
-        <div class="preguntas-panel" data-nivel-id="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
         <div class="notas-panel" data-notas-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
         <div class="formula-panel" data-formula-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
       `;
@@ -1355,9 +1358,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaDoc.id)));
         for (const subtemaDoc of subtemasSnap.docs) {
           await eliminarBloquesDeSubtema(subtemaDoc.id);
+          try { await deleteDoc(doc(db, 'actividades', `subtema_${subtemaDoc.id}`)); } catch (err) { /* puede no existir */ }
           await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
         }
         await eliminarBloquesDeNivel('temaId', temaDoc.id);
+        try { await deleteDoc(doc(db, 'actividades', `tema_${temaDoc.id}`)); } catch (err) { /* puede no existir */ }
         await deleteDoc(doc(db, 'temas', temaDoc.id));
       }
       await eliminarBloquesDeNivel('moduloId', moduloId);
@@ -1467,7 +1472,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       preguntasBtnTema.dataset.nivel = 'tema';
       preguntasBtnTema.dataset.nivelId = tema.id;
       preguntasBtnTema.dataset.cursoId = tema.cursoId;
-      preguntasBtnTema.textContent = '🧠 Preguntas (Examen de Tema) ▾';
+      preguntasBtnTema.textContent = '🧠 Preguntas de retroalimentación (Tema) ▾';
       preguntasBtnTema.style.cssText = 'align-self:flex-start; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;';
 
       const preguntasPanelTema = document.createElement('div');
@@ -1475,12 +1480,29 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       preguntasPanelTema.dataset.nivelId = tema.id;
       preguntasPanelTema.style.cssText = 'display:none; padding:9px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
 
+      const actividadBtnTema = document.createElement('button');
+      actividadBtnTema.type = 'button';
+      actividadBtnTema.className = 'toggle-actividad-btn';
+      actividadBtnTema.dataset.nivel = 'tema';
+      actividadBtnTema.dataset.nivelId = tema.id;
+      actividadBtnTema.dataset.cursoId = tema.cursoId;
+      actividadBtnTema.textContent = '📝 Actividad de aprendizaje ▾';
+      actividadBtnTema.style.cssText = 'align-self:flex-start; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;';
+
+      const actividadPanelTema = document.createElement('div');
+      actividadPanelTema.className = 'actividad-panel';
+      actividadPanelTema.dataset.nivel = 'tema';
+      actividadPanelTema.dataset.nivelId = tema.id;
+      actividadPanelTema.style.cssText = 'display:none; padding:9px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
+
       li.appendChild(header);
+      agregarBloquesNivelAItem(li, { campo: 'temaId', id: tema.id, etiquetaBoton: 'Información del tema' });
       li.appendChild(toggleBtn);
       li.appendChild(subtemasContainer);
+      li.appendChild(actividadBtnTema);
+      li.appendChild(actividadPanelTema);
       li.appendChild(preguntasBtnTema);
       li.appendChild(preguntasPanelTema);
-      agregarBloquesNivelAItem(li, { campo: 'temaId', id: tema.id, etiquetaBoton: 'Información del tema' });
       ul.appendChild(li);
 
       if (subtemasExpandido.has(tema.id)) {
@@ -1497,9 +1519,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', temaId)));
       for (const subtemaDoc of subtemasSnap.docs) {
         await eliminarBloquesDeSubtema(subtemaDoc.id);
+        try { await deleteDoc(doc(db, 'actividades', `subtema_${subtemaDoc.id}`)); } catch (err) { /* puede no existir */ }
         await deleteDoc(doc(db, 'subtemas', subtemaDoc.id));
       }
       await eliminarBloquesDeNivel('temaId', temaId);
+      try { await deleteDoc(doc(db, 'actividades', `tema_${temaId}`)); } catch (err) { /* puede no existir */ }
       await deleteDoc(doc(db, 'temas', temaId));
       subtemasListenersActivos.delete(temaId);
       subtemasExpandido.delete(temaId);
@@ -1670,14 +1694,16 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       const actividadBtn = document.createElement('button');
       actividadBtn.type = 'button';
       actividadBtn.className = 'toggle-actividad-btn';
-      actividadBtn.dataset.subtemaId = subtema.id;
+      actividadBtn.dataset.nivel = 'subtema';
+      actividadBtn.dataset.nivelId = subtema.id;
       actividadBtn.dataset.cursoId = subtema.cursoId;
-      actividadBtn.textContent = '📝 Actividad reflexiva ▾';
+      actividadBtn.textContent = '💭 Pregunta de reflexión ▾';
       actividadBtn.style.cssText = 'align-self:flex-start; padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11px; font-weight:600; cursor:pointer;';
 
       const actividadPanel = document.createElement('div');
       actividadPanel.className = 'actividad-panel';
-      actividadPanel.dataset.subtemaId = subtema.id;
+      actividadPanel.dataset.nivel = 'subtema';
+      actividadPanel.dataset.nivelId = subtema.id;
       actividadPanel.style.cssText = 'display:none; padding:8px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
 
       li.appendChild(header);
@@ -2310,14 +2336,18 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     try {
       if (terminaSubtema) {
         await mostrarActividadSiHay({
-          subtemaId: itemActual.subtemaId, cursoId: itemActual.cursoId,
+          nivel: 'subtema', nivelId: itemActual.subtemaId, cursoId: itemActual.cursoId,
           titulo: itemActual.subtemaNombre
         });
       }
       if (terminaTema) {
+        await mostrarActividadSiHay({
+          nivel: 'tema', nivelId: itemActual.temaId, cursoId: itemActual.cursoId,
+          titulo: itemActual.temaNombre
+        });
         await mostrarExamenSiHay({
           nivel: 'tema', nivelId: itemActual.temaId, cursoId: itemActual.cursoId,
-          titulo: `Examen del Tema: ${itemActual.temaNombre}`, calificado: true
+          titulo: `Preguntas de retroalimentación: ${itemActual.temaNombre}`, calificado: false
         });
       }
       if (terminaModulo) {
@@ -2327,9 +2357,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         });
       }
       if (esUltimoDelCurso) {
-        await mostrarExamenSiHay({
-          nivel: 'curso', nivelId: itemActual.cursoId, cursoId: itemActual.cursoId,
-          titulo: 'Examen Final del Curso', calificado: true
+        await mostrarExamenFinalSiHay({
+          cursoId: itemActual.cursoId, titulo: 'Examen Final del Curso'
         });
         mostrarPantallaFinal();
         return;
@@ -2351,7 +2380,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     if (!confirmado) return;
     try {
       await eliminarBloquesDeSubtema(subtemaId);
-      try { await deleteDoc(doc(db, 'actividades', subtemaId)); } catch (err) { /* puede no existir */ }
+      try { await deleteDoc(doc(db, 'actividades', `subtema_${subtemaId}`)); } catch (err) { /* puede no existir */ }
       await deleteDoc(doc(db, 'subtemas', subtemaId));
       bloquesListenersActivos.delete(subtemaId);
     } catch (err) {
@@ -2690,8 +2719,47 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         return;
       }
       if (!preguntas || preguntas.length === 0) { resolve(); return; }
-      preguntas = barajar(preguntas);
+      ejecutarExamenConPreguntas(barajar(preguntas), { nivel, nivelId, cursoId, titulo, calificado, resolve });
+    });
+  }
 
+  // Examen Final del Curso: en vez de tener su propio banco de preguntas, junta al azar
+  // hasta el máximo de preguntas que el Administrador definió para el curso, tomándolas de
+  // los bancos de preguntas de TODOS los Módulos del curso. Si el curso no tiene ningún
+  // módulo con preguntas, continúa de inmediato sin interrumpir al estudiante.
+  function mostrarExamenFinalSiHay({ cursoId, titulo }){
+    return new Promise(async (resolve) => {
+      let preguntas;
+      try {
+        const cursoSnap = await getDoc(doc(db, 'cursos', cursoId));
+        const maxPreguntas = (cursoSnap.exists() ? cursoSnap.data().maxPreguntasFinal : null) || 20;
+
+        const modulosSnap = await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)));
+        const moduloIds = modulosSnap.docs.map(d => d.id);
+        if (moduloIds.length === 0) { resolve(); return; }
+
+        // "in" en Firestore acepta como máximo 10 valores por consulta, así que se parte
+        // la lista de módulos en bloques de 10 si el curso tiene más que eso.
+        let todasLasPreguntas = [];
+        for (let i = 0; i < moduloIds.length; i += 10) {
+          const bloque = moduloIds.slice(i, i + 10);
+          const snap = await getDocs(query(collection(db, 'preguntas'), where('nivelId', 'in', bloque)));
+          todasLasPreguntas = todasLasPreguntas.concat(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }
+        if (todasLasPreguntas.length === 0) { resolve(); return; }
+        preguntas = barajar(todasLasPreguntas).slice(0, maxPreguntas);
+      } catch (err) {
+        resolve();
+        return;
+      }
+      ejecutarExamenConPreguntas(preguntas, { nivel: 'curso', nivelId: cursoId, cursoId, titulo, calificado: true, resolve });
+    });
+  }
+
+  // Motor compartido que pinta y corrige un examen ya armado (preguntas ya elegidas y
+  // barajadas). Lo usan tanto mostrarExamenSiHay (Tema/Módulo) como mostrarExamenFinalSiHay
+  // (Curso). "resolve" es la función de la Promesa que lo llamó, para avisar cuando termina.
+  function ejecutarExamenConPreguntas(preguntas, { nivel, nivelId, cursoId, titulo, calificado, resolve }){
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed; inset:0; background:rgba(10,20,15,0.92); z-index:9999; overflow-y:auto; display:flex; justify-content:center; padding:30px 16px;';
 
@@ -2823,29 +2891,50 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       }
 
       pintarIntro();
-    });
   }
 
-  // ---------- Actividad reflexiva (reemplaza el banco de preguntas a nivel de Subtema) ----------
-  // En vez de un examen de opción múltiple, el Profesor o Administrador escribe una
-  // consigna (enunciado) por Subtema, y el estudiante responde con texto y/o un enlace
-  // a un documento (por ejemplo, de Google Drive).
+  // ---------- Actividades por nivel ----------
+  // Subtema: "Pregunta de reflexión" — una consigna que el estudiante responde solo con
+  // texto, para que plasme su propio entendimiento de lo leído (no lleva nota).
+  // Tema: "Actividad de aprendizaje" — una consigna más completa que el estudiante puede
+  // responder con texto y/o un enlace a un documento (por ejemplo, de Google Drive).
+  // Ambas comparten el mismo mecanismo (una colección "actividades" y otra
+  // "actividadesRespuestas", identificadas por nivel + nivelId), y ambas las puede
+  // escribir/editar el Administrador o el Profesor.
+  const ACTIVIDAD_CONFIG = {
+    subtema: {
+      etiqueta: 'Pregunta de reflexión',
+      icono: '💭',
+      pideEnlace: false,
+      instruccionAdmin: 'Escribe aquí la pregunta de reflexión que el estudiante debe responder al terminar este subtema (con sus propias palabras, para mostrar que entendió lo leído). Si la dejas vacía, no se le pedirá nada al estudiante.',
+      placeholderEnunciado: 'Ejemplo: ¿Cuál fue la idea más importante de este subtema y cómo la aplicarías en tu trabajo diario?'
+    },
+    tema: {
+      etiqueta: 'Actividad de aprendizaje',
+      icono: '📝',
+      pideEnlace: true,
+      instruccionAdmin: 'Escribe aquí la actividad que el estudiante debe realizar al terminar este tema. El estudiante podrá responder con texto y/o pegar un enlace a un documento (por ejemplo, de Google Drive). Si la dejas vacía, no se le pedirá nada al estudiante.',
+      placeholderEnunciado: 'Ejemplo: Elabora un resumen de una página sobre lo visto en este tema y súbelo a Google Drive, o escríbelo aquí mismo.'
+    }
+  };
 
   // Carga (si existe) y pinta el panel para que el Admin o Profesor escriba/edite la
-  // consigna de la actividad de un Subtema, y vea las respuestas que han enviado los
-  // estudiantes. Lo usan tanto el panel del Administrador como el del Profesor.
-  async function construirPanelActividad(panel, { subtemaId, cursoId }){
+  // consigna de la actividad de un Subtema o Tema, y vea las respuestas que han enviado
+  // los estudiantes. Lo usan tanto el panel del Administrador como el del Profesor.
+  async function construirPanelActividad(panel, { nivel, nivelId, cursoId }){
+    const cfg = ACTIVIDAD_CONFIG[nivel];
+    const actividadId = `${nivel}_${nivelId}`;
     panel.innerHTML = '<p style="font-size:11.5px; color:#8493ab; margin:0;">Cargando…</p>';
     let enunciadoActual = '';
     try {
-      const snap = await getDoc(doc(db, 'actividades', subtemaId));
+      const snap = await getDoc(doc(db, 'actividades', actividadId));
       if (snap.exists()) enunciadoActual = snap.data().enunciado || '';
     } catch (err) { /* se muestra vacío si no se pudo cargar */ }
 
     panel.innerHTML = `
-      <p style="font-size:11px; color:#8493ab; margin:0 0 6px;">Escribe aquí la actividad que el estudiante debe realizar al terminar este subtema. El estudiante podrá responder con texto y/o pegar un enlace a un documento (por ejemplo, de Google Drive). Si lo dejas vacío, no se le pedirá nada al estudiante.</p>
-      <textarea class="actividad-enunciado-input" rows="3" placeholder="Ejemplo: Elabora un resumen de una página sobre lo visto en este subtema y súbelo a Google Drive, o escríbelo aquí mismo." style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical; margin-bottom:6px;">${enunciadoActual}</textarea>
-      <button type="button" class="actividad-guardar-btn" style="padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Guardar actividad</button>
+      <p style="font-size:11px; color:#8493ab; margin:0 0 6px;">${cfg.instruccionAdmin}</p>
+      <textarea class="actividad-enunciado-input" rows="3" placeholder="${cfg.placeholderEnunciado}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical; margin-bottom:6px;">${enunciadoActual}</textarea>
+      <button type="button" class="actividad-guardar-btn" style="padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer;">Guardar</button>
       <span class="actividad-guardado-msg" style="display:none; margin-left:8px; font-size:11px; color:var(--teal); font-weight:600;">Guardado ✓</span>
       <div style="margin-top:10px;">
         <button type="button" class="actividad-ver-respuestas-btn" style="padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:10.5px; font-weight:600; cursor:pointer;">📬 Ver respuestas de estudiantes ▾</button>
@@ -2859,13 +2948,13 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       guardarBtn.disabled = true;
       try {
         const enunciado = panel.querySelector('.actividad-enunciado-input').value.trim();
-        await setDoc(doc(db, 'actividades', subtemaId), {
-          subtemaId, cursoId, enunciado, actualizado: serverTimestamp()
+        await setDoc(doc(db, 'actividades', actividadId), {
+          nivel, nivelId, cursoId, enunciado, actualizado: serverTimestamp()
         }, { merge: true });
         guardadoMsg.style.display = 'inline';
         setTimeout(() => { guardadoMsg.style.display = 'none'; }, 2200);
       } catch (err) {
-        alert('No se pudo guardar la actividad. Intenta de nuevo.');
+        alert('No se pudo guardar. Intenta de nuevo.');
       } finally {
         guardarBtn.disabled = false;
       }
@@ -2881,7 +2970,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       respuestasCargadas = true;
       respuestasPanel.innerHTML = 'Cargando…';
       try {
-        const snap = await getDocs(query(collection(db, 'actividadesRespuestas'), where('subtemaId', '==', subtemaId)));
+        const snap = await getDocs(query(
+          collection(db, 'actividadesRespuestas'),
+          where('nivel', '==', nivel),
+          where('nivelId', '==', nivelId)
+        ));
         const respuestas = snap.docs.map(d => d.data());
         if (respuestas.length === 0) {
           respuestasPanel.innerHTML = 'Todavía no hay respuestas de estudiantes para esta actividad.';
@@ -2904,34 +2997,36 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.toggle-actividad-btn');
     if (!btn) return;
-    const subtemaId = btn.dataset.subtemaId;
+    const nivel = btn.dataset.nivel;
+    const nivelId = btn.dataset.nivelId;
     const cursoId = btn.dataset.cursoId;
-    const panel = document.querySelector(`.actividad-panel[data-subtema-id="${subtemaId}"]`);
+    const panel = document.querySelector(`.actividad-panel[data-nivel="${nivel}"][data-nivel-id="${nivelId}"]`);
     if (!panel) return;
     const abierto = panel.style.display === 'block';
     panel.style.display = abierto ? 'none' : 'block';
     if (!abierto && panel.dataset.cargado !== 'true') {
       panel.dataset.cargado = 'true';
-      construirPanelActividad(panel, { subtemaId, cursoId });
+      construirPanelActividad(panel, { nivel, nivelId, cursoId });
     }
   });
 
-  // Muestra la actividad reflexiva de un Subtema (si el Profesor/Admin escribió una) y
-  // deja que el estudiante responda con texto y/o un enlace a un documento. Si no hay
-  // actividad escrita para ese Subtema, o si el estudiante ya la había respondido antes,
-  // continúa de inmediato sin interrumpir. Devuelve una Promesa que se resuelve al
-  // terminar (o cuando no había nada que mostrar).
-  function mostrarActividadSiHay({ subtemaId, cursoId, titulo }){
+  // Muestra la actividad de un Subtema o Tema (si el Profesor/Admin escribió una) y deja
+  // que el estudiante responda. Si no hay nada escrito para ese nivel, o si el estudiante
+  // ya la había respondido antes, continúa de inmediato sin interrumpir. Devuelve una
+  // Promesa que se resuelve al terminar (o cuando no había nada que mostrar).
+  function mostrarActividadSiHay({ nivel, nivelId, cursoId, titulo }){
     return new Promise(async (resolve) => {
       if (!identidadActual || !identidadActual.uid) { resolve(); return; }
+      const cfg = ACTIVIDAD_CONFIG[nivel];
+      const actividadId = `${nivel}_${nivelId}`;
       let enunciado = '';
       try {
-        const snap = await getDoc(doc(db, 'actividades', subtemaId));
+        const snap = await getDoc(doc(db, 'actividades', actividadId));
         if (snap.exists()) enunciado = (snap.data().enunciado || '').trim();
       } catch (err) { resolve(); return; }
       if (!enunciado) { resolve(); return; }
 
-      const respuestaId = `${identidadActual.uid}_${subtemaId}`;
+      const respuestaId = `${identidadActual.uid}_${nivel}_${nivelId}`;
       try {
         const yaRespondioSnap = await getDoc(doc(db, 'actividadesRespuestas', respuestaId));
         if (yaRespondioSnap.exists()) { resolve(); return; }
@@ -2946,14 +3041,16 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       document.body.appendChild(overlay);
 
       caja.innerHTML = `
-        <h3 style="font-family:'Source Serif 4', serif; margin:0 0 8px; color:var(--ink);">📝 Actividad: ${titulo}</h3>
+        <h3 style="font-family:'Source Serif 4', serif; margin:0 0 8px; color:var(--ink);">${cfg.icono} ${cfg.etiqueta}: ${titulo}</h3>
         <p style="white-space:pre-wrap; font-size:13.5px; color:var(--ink-soft); margin:0 0 16px; padding:10px; background:var(--paper); border-radius:8px;">${enunciado}</p>
         <form class="actividad-respuesta-form">
-          <label style="display:block; font-size:12px; font-weight:600; color:var(--ink); margin-bottom:5px;">Tu respuesta (opcional si vas a adjuntar un enlace)</label>
+          <label style="display:block; font-size:12px; font-weight:600; color:var(--ink); margin-bottom:5px;">${cfg.pideEnlace ? 'Tu respuesta (opcional si vas a adjuntar un enlace)' : 'Tu respuesta'}</label>
           <textarea class="actividad-respuesta-texto" rows="4" placeholder="Escribe tu respuesta aquí..." style="width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical; margin-bottom:10px;"></textarea>
+          ${cfg.pideEnlace ? `
           <label style="display:block; font-size:12px; font-weight:600; color:var(--ink); margin-bottom:5px;">Enlace a tu documento (opcional, por ejemplo de Google Drive)</label>
           <input type="text" class="actividad-respuesta-enlace" placeholder="https://..." style="width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:13px; margin-bottom:6px;">
-          <p class="actividad-error-msg" style="display:none; color:var(--danger); font-size:12px; margin:0 0 10px;">Escribe una respuesta o pega un enlace antes de continuar.</p>
+          ` : ''}
+          <p class="actividad-error-msg" style="display:none; color:var(--danger); font-size:12px; margin:0 0 10px;">${cfg.pideEnlace ? 'Escribe una respuesta o pega un enlace antes de continuar.' : 'Escribe tu respuesta antes de continuar.'}</p>
           <button type="submit" class="actividad-enviar-btn" style="padding:10px 18px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13.5px; font-weight:600; cursor:pointer;">Enviar y continuar →</button>
         </form>
       `;
@@ -2961,7 +3058,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       caja.querySelector('.actividad-respuesta-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const respuestaTexto = caja.querySelector('.actividad-respuesta-texto').value.trim();
-        const enlaceDocumento = caja.querySelector('.actividad-respuesta-enlace').value.trim();
+        const enlaceInput = caja.querySelector('.actividad-respuesta-enlace');
+        const enlaceDocumento = enlaceInput ? enlaceInput.value.trim() : '';
         const errorMsg = caja.querySelector('.actividad-error-msg');
         if (!respuestaTexto && !enlaceDocumento) {
           errorMsg.style.display = 'block';
@@ -2974,7 +3072,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           await setDoc(doc(db, 'actividadesRespuestas', respuestaId), {
             uid: identidadActual.uid,
             estudianteNombre: identidadActual.nombre || '',
-            subtemaId, cursoId, respuestaTexto, enlaceDocumento,
+            nivel, nivelId, cursoId, respuestaTexto, enlaceDocumento,
             enviado: serverTimestamp()
           });
           document.body.removeChild(overlay);
@@ -3117,12 +3215,13 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         permanencia: curso.pesoPermanencia ?? 20,
         temas: curso.pesoTemas ?? 20,
         modulo: curso.pesoModulo ?? 30,
-        final: curso.pesoFinal ?? 30
+        final: curso.pesoFinal ?? 30,
+        maxPreguntasFinal: curso.maxPreguntasFinal ?? 20
       };
 
       panel.innerHTML = `
         <h5 style="margin:0 0 6px; font-size:13px; color:var(--ink);">⚙️ Fórmula de aprobación del curso</h5>
-        <p style="font-size:11.5px; color:#8493ab; margin:0 0 10px;">Pon el porcentaje de cada parte (usa 0 para eliminar un ítem). Lo ideal es que sumen 100.</p>
+        <p style="font-size:11.5px; color:#8493ab; margin:0 0 10px;">Pon el porcentaje de cada parte (usa 0 para eliminar un ítem). Lo ideal es que sumen 100. Como ahora las preguntas de Tema son solo de retroalimentación (no llevan nota), probablemente quieras poner "Exámenes de los Temas" en 0%.</p>
         <form class="formula-form" style="display:flex; flex-direction:column; gap:8px;">
           <label style="font-size:12px; color:var(--ink-soft);">Permanencia en la plataforma (%)
             <input type="number" class="formula-permanencia" min="0" max="100" value="${valores.permanencia}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
@@ -3137,6 +3236,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             <input type="number" class="formula-final" min="0" max="100" value="${valores.final}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
           </label>
           <div class="formula-suma-aviso" style="font-size:11.5px; color:var(--danger); display:none;">Ojo: estos porcentajes no suman 100. Puedes guardarlos igual, pero revisa que sea lo que quieres.</div>
+          <label style="font-size:12px; color:var(--ink-soft); padding-top:4px; border-top:1px solid var(--line);">Cantidad máxima de preguntas del Examen Final
+            <input type="number" class="formula-max-preguntas-final" min="1" max="200" value="${valores.maxPreguntasFinal}" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; margin-top:3px;">
+          </label>
+          <p style="font-size:11px; color:#8493ab; margin:0;">El Examen Final ya no tiene su propio banco de preguntas: el programa elige al azar, cada vez que un estudiante lo presenta, hasta esta cantidad de preguntas tomadas de los bancos de preguntas de TODOS los Módulos del curso.</p>
           <button type="submit" style="align-self:flex-start; padding:7px 14px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar fórmula</button>
           <div class="formula-status" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓</div>
         </form>
@@ -3149,6 +3252,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         const temas = parseInt(panel.querySelector('.formula-temas').value, 10) || 0;
         const modulo = parseInt(panel.querySelector('.formula-modulo').value, 10) || 0;
         const final = parseInt(panel.querySelector('.formula-final').value, 10) || 0;
+        const maxPreguntasFinal = parseInt(panel.querySelector('.formula-max-preguntas-final').value, 10) || 20;
         const aviso = panel.querySelector('.formula-suma-aviso');
         aviso.style.display = (permanencia + temas + modulo + final !== 100) ? 'block' : 'none';
 
@@ -3159,7 +3263,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             pesoPermanencia: permanencia,
             pesoTemas: temas,
             pesoModulo: modulo,
-            pesoFinal: final
+            pesoFinal: final,
+            maxPreguntasFinal: maxPreguntasFinal
           });
           const status = panel.querySelector('.formula-status');
           status.style.display = 'block';
@@ -3338,13 +3443,15 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
               ${modulo.temas.map((tema, j) => `
                 <li style="font-size:12px; color:var(--ink-soft);">
                   ${i + 1}.${j + 1} ${tema.nombre}
+                  <button type="button" class="toggle-actividad-btn" data-nivel="tema" data-nivel-id="${tema.id}" data-curso-id="${cursoId}" style="margin-top:4px; padding:4px 7px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:10.5px; font-weight:600; cursor:pointer;">📝 Actividad de aprendizaje ▾</button>
+                  <div class="actividad-panel" data-nivel="tema" data-nivel-id="${tema.id}" style="display:none; margin-top:6px; padding:8px; background:#fff; border:1px solid var(--line); border-radius:8px;"></div>
                   ${(tema.subtemas || []).length === 0 ? '' : `
                     <ul style="list-style:none; margin:4px 0 0; padding-left:14px; display:flex; flex-direction:column; gap:5px;">
                       ${tema.subtemas.map((sub, k) => `
                         <li style="font-size:11.5px; color:#8493ab;">
                           <div>${i + 1}.${j + 1}.${k + 1} ${sub.nombre}</div>
-                          <button type="button" class="toggle-actividad-btn" data-subtema-id="${sub.id}" data-curso-id="${cursoId}" style="margin-top:4px; padding:4px 7px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:10.5px; font-weight:600; cursor:pointer;">📝 Actividad reflexiva ▾</button>
-                          <div class="actividad-panel" data-subtema-id="${sub.id}" style="display:none; margin-top:6px; padding:8px; background:#fff; border:1px solid var(--line); border-radius:8px;"></div>
+                          <button type="button" class="toggle-actividad-btn" data-nivel="subtema" data-nivel-id="${sub.id}" data-curso-id="${cursoId}" style="margin-top:4px; padding:4px 7px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:10.5px; font-weight:600; cursor:pointer;">💭 Pregunta de reflexión ▾</button>
+                          <div class="actividad-panel" data-nivel="subtema" data-nivel-id="${sub.id}" style="display:none; margin-top:6px; padding:8px; background:#fff; border:1px solid var(--line); border-radius:8px;"></div>
                         </li>`).join('')}
                     </ul>`}
                 </li>`).join('')}
@@ -3823,7 +3930,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     }
 
     const rol = snap.data().rol;
-    identidadActual = { uid: uid, nombre: snap.data().nombre || '', rol: roleInfo[rol]?.label || rol };
+    identidadActual = { uid: uid, nombre: snap.data().nombre || '', rol: roleInfo[rol]?.label || rol, rolCrudo: rol };
     loginView.style.display = 'none';
     panelView.style.display = 'block';
     panelBadge.textContent = roleInfo[rol]?.label || rol;
