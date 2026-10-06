@@ -534,8 +534,17 @@
 
       <div class="msg error" id="courseErrorMsg"></div>
 
+      <div style="display:flex; flex-direction:column; gap:6px; margin:14px 0 18px 0; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;">
+        <label for="courseSelectorDropdown" style="font-size:12.5px; font-weight:700; color:var(--ink-soft);">📂 Selecciona el curso en el que quieres trabajar</label>
+        <select id="courseSelectorDropdown" style="width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; background:#fff;">
+          <option value="">— Selecciona un curso —</option>
+        </select>
+        <div style="font-size:11.5px; color:#8493ab;">Así evitas mezclar la información de un curso con la de otro mientras trabajas.</div>
+      </div>
+
       <ul class="course-list" id="courseList"></ul>
       <div class="course-empty" id="courseEmpty" style="display:none;">Todavía no has creado ningún curso.</div>
+      <div class="course-empty" id="courseNoSeleccionado" style="display:none; padding:18px; text-align:center; color:#8493ab; font-size:13.5px;">⬆️ Selecciona un curso de la lista de arriba para ver y editar su contenido.</div>
     </div>
 
     <button class="logout" id="logoutBtn" style="margin-top:24px;">Cerrar sesión</button>
@@ -557,15 +566,70 @@
   // --- Configuración de ImgBB (para subir imágenes, sin necesitar tarjeta) ---
   const IMGBB_API_KEY = '7dec8bf1e363f6a44f93a21416abd867';
 
-  async function subirImagenACloudinary(archivo){
-    const formData = new FormData();
-    formData.append('image', archivo);
-    const respuesta = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-      method: 'POST',
-      body: formData
+  // Reduce el tamaño de una foto (muy útil para fotos tomadas con el celular, que suelen
+  // pesar varios MB) antes de subirla, para que la subida sea más rápida y confiable en
+  // redes móviles. La convierte a JPG y la achica a un máximo de 1600px de ancho o alto.
+  function comprimirImagen(archivo, maxDimension = 1600, calidad = 0.75){
+    return new Promise((resolve, reject) => {
+      if (!archivo || !archivo.type || !archivo.type.startsWith('image/')) {
+        reject(new Error('El archivo seleccionado no es una imagen.'));
+        return;
+      }
+      const lector = new FileReader();
+      lector.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+      lector.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('No se pudo procesar esta imagen (puede ser un formato no compatible, como HEIC de iPhone).'));
+        img.onload = () => {
+          let ancho = img.naturalWidth;
+          let alto = img.naturalHeight;
+          if (ancho > maxDimension || alto > maxDimension) {
+            if (ancho >= alto) {
+              alto = Math.round(alto * (maxDimension / ancho));
+              ancho = maxDimension;
+            } else {
+              ancho = Math.round(ancho * (maxDimension / alto));
+              alto = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = ancho;
+          canvas.height = alto;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, ancho, alto);
+          canvas.toBlob((blob) => {
+            if (!blob) { reject(new Error('No se pudo comprimir la imagen.')); return; }
+            resolve(blob);
+          }, 'image/jpeg', calidad);
+        };
+        img.src = lector.result;
+      };
+      lector.readAsDataURL(archivo);
     });
+  }
+
+  async function subirImagenACloudinary(archivo){
+    let archivoParaSubir = archivo;
+    try {
+      // Intentamos comprimir primero: así se sube más rápido y hay menos fallas en celulares.
+      archivoParaSubir = await comprimirImagen(archivo);
+    } catch (err) {
+      // Si la foto no se pudo comprimir (formato poco común), probamos subir el archivo tal cual.
+      archivoParaSubir = archivo;
+    }
+    const formData = new FormData();
+    formData.append('image', archivoParaSubir, 'imagen.jpg');
+    let respuesta;
+    try {
+      respuesta = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+        method: 'POST',
+        body: formData
+      });
+    } catch (err) {
+      throw new Error('No hay conexión suficiente para subir la imagen. Revisa tu wifi o datos móviles e intenta de nuevo.');
+    }
     const datos = await respuesta.json();
-    if (!respuesta.ok || !datos.success) throw new Error('No se pudo subir la imagen');
+    if (!respuesta.ok || !datos.success) throw new Error('No se pudo subir la imagen. Intenta de nuevo.');
     return datos.data.url;
   }
 
@@ -830,6 +894,9 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   const courseErrorMsg = document.getElementById('courseErrorMsg');
   const courseList = document.getElementById('courseList');
   const courseEmpty = document.getElementById('courseEmpty');
+  const courseSelectorDropdown = document.getElementById('courseSelectorDropdown');
+  const courseNoSeleccionado = document.getElementById('courseNoSeleccionado');
+  let cursoTrabajoId = '';
   let cursosListenerActivo = false;
   let cursosData = [];
   let profesoresData = [];
@@ -844,6 +911,22 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   let subtemasListenersActivos = new Set();
   let bloquesPorSubtema = {};
   let bloquesListenersActivos = new Set();
+
+  // Acordeón para el Administrador: cuando abre un panel (Información, Subtemas, Actividad,
+  // Preguntas, Contenido, etc.) dentro de un elemento de una lista (Módulo, Tema o Subtema),
+  // cierra automáticamente esos mismos paneles en los demás elementos "hermanos" de esa misma
+  // lista, para que en pantalla solo quede abierto lo que se está trabajando en ese momento.
+  function colapsarHermanos(liActual){
+    if (!liActual) return;
+    const ul = liActual.parentElement;
+    if (!ul) return;
+    Array.from(ul.children).forEach(hermano => {
+      if (hermano === liActual) return;
+      hermano.querySelectorAll('.nivel-panel-colapsable').forEach(panel => {
+        panel.style.display = 'none';
+      });
+    });
+  }
 
   function clearMsgs(){
     errorMsg.style.display = 'none';
@@ -1062,14 +1145,42 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     }
   });
 
+  function renderSelectorDeCursos(){
+    const seleccionPrevia = courseSelectorDropdown.value;
+    courseSelectorDropdown.innerHTML = '<option value="">— Selecciona un curso —</option>' +
+      cursosData.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    // Si el curso que estaba elegido sigue existiendo, lo dejamos elegido; si no, se limpia.
+    if (cursoTrabajoId && cursosData.some(c => c.id === cursoTrabajoId)) {
+      courseSelectorDropdown.value = cursoTrabajoId;
+    } else if (seleccionPrevia && cursosData.some(c => c.id === seleccionPrevia)) {
+      courseSelectorDropdown.value = seleccionPrevia;
+      cursoTrabajoId = seleccionPrevia;
+    } else {
+      cursoTrabajoId = '';
+    }
+  }
+
+  courseSelectorDropdown.addEventListener('change', () => {
+    cursoTrabajoId = courseSelectorDropdown.value;
+    renderCourseList();
+  });
+
   function renderCourseList(){
+    renderSelectorDeCursos();
     courseList.innerHTML = '';
     if (cursosData.length === 0) {
       courseEmpty.style.display = 'block';
+      courseNoSeleccionado.style.display = 'none';
       return;
     }
     courseEmpty.style.display = 'none';
-    cursosData.forEach(curso => {
+    if (!cursoTrabajoId) {
+      courseNoSeleccionado.style.display = 'block';
+      return;
+    }
+    courseNoSeleccionado.style.display = 'none';
+    const cursosAMostrar = cursosData.filter(c => c.id === cursoTrabajoId);
+    cursosAMostrar.forEach(curso => {
       const li = document.createElement('li');
       li.className = 'course-item';
       li.style.flexDirection = 'column';
@@ -1277,7 +1388,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       toggleBtn.style.cssText = 'align-self:flex-start; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer;';
 
       const temasContainer = document.createElement('div');
-      temasContainer.className = 'temas-container';
+      temasContainer.className = 'temas-container nivel-panel-colapsable';
       temasContainer.dataset.temasFor = modulo.id;
       temasContainer.style.cssText = 'display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
       temasContainer.innerHTML = `
@@ -1291,9 +1402,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       toggleBtn.addEventListener('click', () => {
         const abierto = temasContainer.style.display === 'block';
+        if (!abierto) { colapsarHermanos(li); }
         temasContainer.style.display = abierto ? 'none' : 'block';
         if (abierto) { temasExpandido.delete(modulo.id); }
-        else { temasExpandido.add(modulo.id); ensureTemasListener(modulo.id); }
+        else { temasExpandido.clear(); temasExpandido.add(modulo.id); ensureTemasListener(modulo.id); }
       });
 
       temasContainer.querySelector('.tema-form').addEventListener('submit', async (e) => {
@@ -1330,7 +1442,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       preguntasBtnModulo.style.cssText = 'align-self:flex-start; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer;';
 
       const preguntasPanelModulo = document.createElement('div');
-      preguntasPanelModulo.className = 'preguntas-panel';
+      preguntasPanelModulo.className = 'preguntas-panel nivel-panel-colapsable';
       preguntasPanelModulo.dataset.nivelId = modulo.id;
       preguntasPanelModulo.style.cssText = 'display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
 
@@ -1423,6 +1535,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       toggleBtn.style.cssText = 'align-self:flex-start; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;';
 
       const subtemasContainer = document.createElement('div');
+      subtemasContainer.className = 'nivel-panel-colapsable';
       subtemasContainer.dataset.subtemasFor = tema.id;
       subtemasContainer.style.cssText = 'display:none; padding:9px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
       subtemasContainer.innerHTML = `
@@ -1436,9 +1549,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       toggleBtn.addEventListener('click', () => {
         const abierto = subtemasContainer.style.display === 'block';
+        if (!abierto) { colapsarHermanos(li); }
         subtemasContainer.style.display = abierto ? 'none' : 'block';
         if (abierto) { subtemasExpandido.delete(tema.id); }
-        else { subtemasExpandido.add(tema.id); ensureSubtemasListener(tema.id); }
+        else { subtemasExpandido.clear(); subtemasExpandido.add(tema.id); ensureSubtemasListener(tema.id); }
       });
 
       subtemasContainer.querySelector('.subtema-form').addEventListener('submit', async (e) => {
@@ -1476,7 +1590,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       preguntasBtnTema.style.cssText = 'align-self:flex-start; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;';
 
       const preguntasPanelTema = document.createElement('div');
-      preguntasPanelTema.className = 'preguntas-panel';
+      preguntasPanelTema.className = 'preguntas-panel nivel-panel-colapsable';
       preguntasPanelTema.dataset.nivelId = tema.id;
       preguntasPanelTema.style.cssText = 'display:none; padding:9px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
 
@@ -1490,7 +1604,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       actividadBtnTema.style.cssText = 'align-self:flex-start; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11.5px; font-weight:600; cursor:pointer;';
 
       const actividadPanelTema = document.createElement('div');
-      actividadPanelTema.className = 'actividad-panel';
+      actividadPanelTema.className = 'actividad-panel nivel-panel-colapsable';
       actividadPanelTema.dataset.nivel = 'tema';
       actividadPanelTema.dataset.nivelId = tema.id;
       actividadPanelTema.style.cssText = 'display:none; padding:9px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
@@ -1581,6 +1695,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       toggleBtn.style.cssText = 'align-self:flex-start; padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11px; font-weight:600; cursor:pointer;';
 
       const bloquesContainer = document.createElement('div');
+      bloquesContainer.className = 'nivel-panel-colapsable';
       bloquesContainer.dataset.bloquesFor = subtema.id;
       bloquesContainer.style.cssText = 'display:none; padding:8px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
       bloquesContainer.innerHTML = `
@@ -1632,6 +1747,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       toggleBtn.addEventListener('click', () => {
         const abierto = bloquesContainer.style.display === 'block';
+        if (!abierto) { colapsarHermanos(li); }
         bloquesContainer.style.display = abierto ? 'none' : 'block';
         if (!abierto) ensureBloquesListener(subtema.id);
       });
@@ -1701,7 +1817,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       actividadBtn.style.cssText = 'align-self:flex-start; padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:11px; font-weight:600; cursor:pointer;';
 
       const actividadPanel = document.createElement('div');
-      actividadPanel.className = 'actividad-panel';
+      actividadPanel.className = 'actividad-panel nivel-panel-colapsable';
       actividadPanel.dataset.nivel = 'subtema';
       actividadPanel.dataset.nivelId = subtema.id;
       actividadPanel.style.cssText = 'display:none; padding:8px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
@@ -2051,6 +2167,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     infoBtn.style.cssText = 'align-self:flex-start; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer;';
 
     const infoContainer = document.createElement('div');
+    infoContainer.className = 'nivel-panel-colapsable';
     infoContainer.style.cssText = 'display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;';
     infoContainer.innerHTML = `
       <form class="bloque-nivel-form" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
@@ -2063,6 +2180,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
     infoBtn.addEventListener('click', () => {
       const abierto = infoContainer.style.display === 'block';
+      if (!abierto) { colapsarHermanos(li); }
       infoContainer.style.display = abierto ? 'none' : 'block';
       if (!abierto) ensureBloquesNivelListener(campo, id);
     });
@@ -3003,6 +3121,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     const panel = document.querySelector(`.actividad-panel[data-nivel="${nivel}"][data-nivel-id="${nivelId}"]`);
     if (!panel) return;
     const abierto = panel.style.display === 'block';
+    if (!abierto && btn.closest('#courseList')) { colapsarHermanos(btn.closest('li')); }
     panel.style.display = abierto ? 'none' : 'block';
     if (!abierto && panel.dataset.cargado !== 'true') {
       panel.dataset.cargado = 'true';
@@ -4015,6 +4134,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     const panel = document.querySelector(`.preguntas-panel[data-nivel-id="${nivelId}"]`);
     if (!panel) return;
     const abierto = panel.style.display === 'block';
+    if (!abierto) { colapsarHermanos(btn.closest('li')); }
     panel.style.display = abierto ? 'none' : 'block';
     if (!abierto && panel.dataset.cargado !== 'true') {
       panel.dataset.cargado = 'true';
