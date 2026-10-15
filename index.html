@@ -560,7 +560,7 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, serverTimestamp,
-    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs, increment
+    collection, addDoc, onSnapshot, query, orderBy, where, updateDoc, deleteDoc, getDocs, increment, writeBatch
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // --- Configuración de ImgBB (para subir imágenes, sin necesitar tarjeta) ---
@@ -1211,6 +1211,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <button type="button" class="toggle-modulos-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">Módulos ▾</button>
         <button type="button" class="toggle-notas-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📊 Ver notas ▾</button>
         <button type="button" class="toggle-formula-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">⚙️ Fórmula de aprobación ▾</button>
+        <button type="button" class="toggle-importar-btn" data-curso-id="${curso.id}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--teal); border-radius:8px; background:#fff; color:var(--teal); font-size:12.5px; font-weight:600; cursor:pointer;">📥 Importar curso desde documento ▾</button>
         <button type="button" class="link-curso-btn" data-curso-id="${curso.id}" data-curso-nombre="${curso.nombre}" style="align-self:flex-start; padding:7px 12px; border:1px solid var(--amber-deep); border-radius:8px; background:#fff; color:var(--amber-deep); font-size:12.5px; font-weight:600; cursor:pointer;">🔗 Generar enlace para estudiantes</button>
         <div class="link-status" data-linkstatus-for="${curso.id}" style="font-size:12px; color:var(--teal); display:none; word-break:break-all;"></div>
 
@@ -1224,6 +1225,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         </div>
         <div class="notas-panel" data-notas-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
         <div class="formula-panel" data-formula-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
+        <div class="importar-panel" data-importar-for="${curso.id}" style="display:none; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;"></div>
       `;
       courseList.appendChild(li);
 
@@ -3325,6 +3327,307 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
   // Panel para que el Administrador edite (o elimine, dejándolo en 0) los porcentajes
   // de la fórmula de aprobación del curso.
+  // ---------- Importar un curso escrito desde un documento ----------
+  const importBorradores = {};
+
+  const IMPORT_PLANTILLA = `# Escribe aquí la introducción general si quieres (esta primera parte se ignora).
+
+MÓDULO 1: Nombre del primer módulo
+Texto de información del módulo (opcional). Cada párrafo, separado por una línea en blanco, se guarda como un bloque de texto.
+
+Este es otro párrafo de información del módulo.
+
+TEMA 1: Nombre del primer tema
+Texto de información del tema (opcional). Aparece justo después del nombre del tema.
+
+SUBTEMA 1: Nombre del primer subtema
+Primer párrafo del contenido que leerá el estudiante.
+
+Segundo párrafo del contenido del subtema.
+
+REFLEXIÓN: ¿Cuál fue la idea más importante de este subtema y cómo la aplicarías en tu trabajo diario?
+
+SUBTEMA 2: Nombre del segundo subtema
+Contenido del segundo subtema.
+
+REFLEXIÓN: Pregunta de reflexión del segundo subtema.
+
+ACTIVIDAD: Elabora un resumen de una página sobre lo visto en este tema y súbelo a Google Drive, o escríbelo aquí mismo.
+
+TEMA 2: Nombre del segundo tema
+
+SUBTEMA 1: Otro subtema
+Contenido.
+
+MÓDULO 2: Nombre del segundo módulo
+Y así sucesivamente...
+`;
+
+  function analizarDocumentoCurso(texto){
+    const lineas = String(texto || '').replace(/\r\n?/g, '\n').split('\n');
+    const reMarca = /^\s*(m[oó]dulo|tema|subtema|reflexi[oó]n|actividad)\s*[\d.]*\s*[:：]\s*(.*)$/i;
+    const modulos = [];
+    const avisos = [];
+    let mod = null, tema = null, sub = null;
+    let destino = null; // dónde se está acumulando texto: {tipo, ref}
+    let buffer = [];
+
+    function vaciar(){
+      if (!destino) { buffer = []; return; }
+      const texto = buffer.join('\n').trim();
+      buffer = [];
+      if (!texto) return;
+      if (destino.tipo === 'reflexion' || destino.tipo === 'actividad') {
+        destino.ref.enunciado = (destino.ref.enunciado ? destino.ref.enunciado + '\n\n' : '') + texto;
+        return;
+      }
+      let trozos = texto.split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
+      if (trozos.length === 1 && trozos[0].includes('\n')) {
+        trozos = trozos[0].split('\n').map(t => t.trim()).filter(Boolean);
+      }
+      destino.ref.bloques.push(...trozos);
+    }
+
+    lineas.forEach((linea, i) => {
+      const m = linea.match(reMarca);
+      if (!m) { buffer.push(linea); return; }
+      vaciar();
+      const tipo = m[1].toLowerCase().replace('ó', 'o');
+      const valor = m[2].trim();
+      if (tipo === 'modulo') {
+        if (!valor) { avisos.push(`Línea ${i + 1}: el MÓDULO no tiene nombre.`); }
+        mod = { nombre: valor || 'Módulo sin nombre', bloques: [], temas: [] };
+        modulos.push(mod); tema = null; sub = null;
+        destino = { tipo: 'bloques', ref: mod };
+      } else if (tipo === 'tema') {
+        if (!mod) { avisos.push(`Línea ${i + 1}: hay un TEMA antes de cualquier MÓDULO; se ignoró.`); destino = null; return; }
+        tema = { nombre: valor || 'Tema sin nombre', bloques: [], actividad: { enunciado: '' }, subtemas: [] };
+        mod.temas.push(tema); sub = null;
+        destino = { tipo: 'bloques', ref: tema };
+      } else if (tipo === 'subtema') {
+        if (!tema) { avisos.push(`Línea ${i + 1}: hay un SUBTEMA antes de cualquier TEMA; se ignoró.`); destino = null; return; }
+        sub = { nombre: valor || 'Subtema sin nombre', bloques: [], reflexion: { enunciado: '' } };
+        tema.subtemas.push(sub);
+        destino = { tipo: 'bloques', ref: sub };
+      } else if (tipo === 'reflexion') {
+        if (!sub) { avisos.push(`Línea ${i + 1}: REFLEXIÓN fuera de un SUBTEMA; se ignoró.`); destino = null; return; }
+        destino = { tipo: 'reflexion', ref: sub.reflexion };
+        if (valor) buffer.push(valor);
+      } else if (tipo === 'actividad') {
+        if (!tema) { avisos.push(`Línea ${i + 1}: ACTIVIDAD fuera de un TEMA; se ignoró.`); destino = null; return; }
+        destino = { tipo: 'actividad', ref: tema.actividad };
+        if (valor) buffer.push(valor);
+      }
+    });
+    vaciar();
+
+    const resumen = { modulos: modulos.length, temas: 0, subtemas: 0, bloques: 0, reflexiones: 0, actividades: 0 };
+    modulos.forEach(mo => {
+      resumen.bloques += mo.bloques.length;
+      mo.temas.forEach(te => {
+        resumen.temas++;
+        resumen.bloques += te.bloques.length;
+        if (te.actividad.enunciado) resumen.actividades++;
+        te.subtemas.forEach(su => {
+          resumen.subtemas++;
+          resumen.bloques += su.bloques.length;
+          if (su.reflexion.enunciado) resumen.reflexiones++;
+        });
+      });
+    });
+    return { modulos, resumen, avisos };
+  }
+
+  async function guardarDocumentoCurso(cursoId, modulos, onProgreso){
+    // Se agrega después de lo que el curso ya tenga, sin tocar nada existente.
+    const modulosExistentes = (await getDocs(query(collection(db, 'modulos'), where('cursoId', '==', cursoId)))).size;
+    const operaciones = [];
+    const ahora = () => serverTimestamp();
+
+    modulos.forEach((mo, mi) => {
+      const moRef = doc(collection(db, 'modulos'));
+      operaciones.push([moRef, { cursoId, nombre: mo.nombre, orden: modulosExistentes + mi, creado: ahora() }]);
+      mo.bloques.forEach((texto, bi) => {
+        operaciones.push([doc(collection(db, 'bloques')), { moduloId: moRef.id, tipo: 'texto', contenido: texto, orden: bi, creado: ahora() }]);
+      });
+      mo.temas.forEach((te, ti) => {
+        const teRef = doc(collection(db, 'temas'));
+        operaciones.push([teRef, { moduloId: moRef.id, cursoId, nombre: te.nombre, orden: ti, creado: ahora() }]);
+        te.bloques.forEach((texto, bi) => {
+          operaciones.push([doc(collection(db, 'bloques')), { temaId: teRef.id, tipo: 'texto', contenido: texto, orden: bi, creado: ahora() }]);
+        });
+        if (te.actividad.enunciado) {
+          operaciones.push([doc(db, 'actividades', `tema_${teRef.id}`), { nivel: 'tema', nivelId: teRef.id, cursoId, enunciado: te.actividad.enunciado, actualizado: ahora() }]);
+        }
+        te.subtemas.forEach((su, si) => {
+          const suRef = doc(collection(db, 'subtemas'));
+          operaciones.push([suRef, { temaId: teRef.id, moduloId: moRef.id, cursoId, nombre: su.nombre, orden: si, creado: ahora() }]);
+          su.bloques.forEach((texto, bi) => {
+            operaciones.push([doc(collection(db, 'bloques')), { subtemaId: suRef.id, tipo: 'texto', contenido: texto, orden: bi, creado: ahora() }]);
+          });
+          if (su.reflexion.enunciado) {
+            operaciones.push([doc(db, 'actividades', `subtema_${suRef.id}`), { nivel: 'subtema', nivelId: suRef.id, cursoId, enunciado: su.reflexion.enunciado, actualizado: ahora() }]);
+          }
+        });
+      });
+    });
+
+    const TAM = 400;
+    for (let i = 0; i < operaciones.length; i += TAM) {
+      const lote = writeBatch(db);
+      operaciones.slice(i, i + TAM).forEach(([ref, datos]) => lote.set(ref, datos));
+      await lote.commit();
+      if (onProgreso) onProgreso(Math.min(i + TAM, operaciones.length), operaciones.length);
+    }
+    return operaciones.length;
+  }
+
+  function cargarMammoth(){
+    if (window.mammoth) return Promise.resolve(window.mammoth);
+    return new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+      sc.onload = () => window.mammoth ? resolve(window.mammoth) : reject(new Error('mammoth'));
+      sc.onerror = () => reject(new Error('mammoth'));
+      document.head.appendChild(sc);
+    });
+  }
+
+  function construirPanelImportar(panel, cursoId){
+    panel.innerHTML = `
+      <p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 8px 0; line-height:1.5;">
+        Aquí puedes cargar todo lo <strong>escrito</strong> de un curso de una sola vez: módulos, temas, subtemas, textos, preguntas de reflexión y actividades de aprendizaje.
+        Se <strong>agrega</strong> al curso elegido, sin borrar nada de lo que ya tenga. Imágenes, videos y exámenes se cargan después, uno por uno.
+      </p>
+      <div style="font-size:12px; color:var(--ink-soft); background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; line-height:1.6;">
+        <strong>Cómo escribir el documento:</strong> cada título empieza con una palabra clave, dos puntos y el nombre.<br>
+        <code>MÓDULO 1: nombre</code> · <code>TEMA 1: nombre</code> · <code>SUBTEMA 1: nombre</code><br>
+        El texto que va debajo de un MÓDULO, TEMA o SUBTEMA es su contenido (deja una línea en blanco entre párrafos).<br>
+        <code>REFLEXIÓN: pregunta</code> va dentro de un subtema · <code>ACTIVIDAD: consigna</code> va dentro de un tema.
+      </div>
+      <button type="button" class="imp-plantilla-btn" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer; margin-bottom:10px;">⬇️ Descargar documento de ejemplo (.txt)</button>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">1) Sube tu documento (Word .docx o texto .txt) o pega el texto abajo</label>
+        <input type="file" class="imp-archivo" accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="font-size:12px;">
+        <textarea class="imp-texto" rows="10" placeholder="Pega aquí el texto de tu curso..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
+        <button type="button" class="imp-revisar-btn" style="align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">2) Revisar antes de cargar</button>
+        <div class="imp-resumen" style="display:none; font-size:12.5px; line-height:1.6; padding:10px; background:#fff; border:1px solid var(--line); border-radius:8px;"></div>
+        <button type="button" class="imp-cargar-btn" style="display:none; align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12.5px; font-weight:700; cursor:pointer;">3) Cargar al curso</button>
+        <div class="imp-estado" style="display:none; font-size:12.5px; color:var(--teal);"></div>
+      </div>
+    `;
+    const texto = panel.querySelector('.imp-texto');
+    const archivo = panel.querySelector('.imp-archivo');
+    const revisarBtn = panel.querySelector('.imp-revisar-btn');
+    const cargarBtn = panel.querySelector('.imp-cargar-btn');
+    const resumenEl = panel.querySelector('.imp-resumen');
+    const estado = panel.querySelector('.imp-estado');
+    let analisis = null;
+
+    texto.value = importBorradores[cursoId] || '';
+    texto.addEventListener('input', () => {
+      importBorradores[cursoId] = texto.value;
+      analisis = null; cargarBtn.style.display = 'none'; resumenEl.style.display = 'none';
+    });
+
+    panel.querySelector('.imp-plantilla-btn').addEventListener('click', () => {
+      const blob = new Blob([IMPORT_PLANTILLA], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'plantilla-curso-imasevi.txt';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    archivo.addEventListener('change', async () => {
+      const f = archivo.files[0];
+      if (!f) return;
+      estado.style.display = 'block';
+      estado.style.color = 'var(--teal)';
+      estado.textContent = 'Leyendo el documento...';
+      try {
+        let contenido;
+        if (/\.docx$/i.test(f.name)) {
+          const mammoth = await cargarMammoth();
+          const res = await mammoth.extractRawText({ arrayBuffer: await f.arrayBuffer() });
+          contenido = res.value;
+        } else {
+          contenido = await f.text();
+        }
+        texto.value = contenido;
+        importBorradores[cursoId] = contenido;
+        analisis = null; cargarBtn.style.display = 'none'; resumenEl.style.display = 'none';
+        estado.textContent = 'Documento leído. Ahora pulsa "Revisar antes de cargar".';
+      } catch (err) {
+        estado.style.color = 'var(--danger)';
+        estado.textContent = 'No se pudo leer el archivo. Abre el documento, copia todo el texto y pégalo en el cuadro de abajo.';
+      }
+    });
+
+    revisarBtn.addEventListener('click', () => {
+      estado.style.display = 'none';
+      if (!texto.value.trim()) { alert('Primero sube o pega el texto del curso.'); return; }
+      analisis = analizarDocumentoCurso(texto.value);
+      const r = analisis.resumen;
+      resumenEl.style.display = 'block';
+      if (r.modulos === 0) {
+        resumenEl.innerHTML = '⚠️ No se encontró ningún <strong>MÓDULO</strong>. Revisa que cada título empiece con la palabra clave y dos puntos, por ejemplo: <code>MÓDULO 1: Nombre</code>.';
+        cargarBtn.style.display = 'none';
+        return;
+      }
+      const estructura = analisis.modulos.map((mo, i) =>
+        `<div style="margin-top:6px;"><strong>Módulo ${i + 1}:</strong> ${escaparHtmlImp(mo.nombre)}` +
+        mo.temas.map((te, j) => `<div style="margin-left:14px;">Tema ${j + 1}: ${escaparHtmlImp(te.nombre)} <span style="color:#8493ab;">(${te.subtemas.length} subtemas)</span></div>`).join('') +
+        `</div>`).join('');
+      resumenEl.innerHTML =
+        `<div><strong>Esto se va a cargar:</strong> ${r.modulos} módulos · ${r.temas} temas · ${r.subtemas} subtemas · ${r.bloques} bloques de texto · ${r.reflexiones} preguntas de reflexión · ${r.actividades} actividades de aprendizaje</div>` +
+        (analisis.avisos.length ? `<div style="margin-top:6px; color:var(--danger);">⚠️ Avisos:<br>${analisis.avisos.map(escaparHtmlImp).join('<br>')}</div>` : '') +
+        estructura;
+      cargarBtn.style.display = 'inline-block';
+    });
+
+    cargarBtn.addEventListener('click', async () => {
+      if (!analisis || analisis.resumen.modulos === 0) return;
+      const r = analisis.resumen;
+      if (!confirm(`Se agregarán al curso ${r.modulos} módulos, ${r.temas} temas y ${r.subtemas} subtemas con su contenido.\n\nSi ya cargaste este mismo documento antes, se duplicará.\n\n¿Cargar ahora?`)) return;
+      cargarBtn.disabled = true; revisarBtn.disabled = true;
+      estado.style.display = 'block'; estado.style.color = 'var(--teal)';
+      estado.textContent = 'Cargando... no cierres esta pantalla.';
+      try {
+        await guardarDocumentoCurso(cursoId, analisis.modulos, (hechas, total) => {
+          estado.textContent = `Cargando... ${hechas} de ${total}`;
+        });
+        estado.textContent = '✅ Listo: el curso fue cargado. Abre "Módulos" para verlo.';
+        texto.value = ''; importBorradores[cursoId] = '';
+        analisis = null; cargarBtn.style.display = 'none'; resumenEl.style.display = 'none';
+        archivo.value = '';
+      } catch (err) {
+        estado.style.color = 'var(--danger)';
+        estado.textContent = 'No se pudo cargar completo. Revisa tu conexión y avísame antes de volver a intentarlo, para no duplicar contenido.';
+      } finally {
+        cargarBtn.disabled = false; revisarBtn.disabled = false;
+      }
+    });
+  }
+
+  function escaparHtmlImp(t){
+    return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.toggle-importar-btn');
+    if (!btn) return;
+    const cursoId = btn.dataset.cursoId;
+    const panel = document.querySelector(`.importar-panel[data-importar-for="${cursoId}"]`);
+    if (!panel) return;
+    const abierto = panel.style.display === 'block';
+    panel.style.display = abierto ? 'none' : 'block';
+    if (!abierto && panel.dataset.cargado !== 'true') {
+      panel.dataset.cargado = 'true';
+      construirPanelImportar(panel, cursoId);
+    }
+  });
+
   async function construirPanelFormula(panel, cursoId){
     panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Cargando…</p>';
     try {
