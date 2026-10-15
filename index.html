@@ -346,6 +346,21 @@
   .est-bienvenida{ margin-bottom:18px; border:1px solid var(--line); border-radius:12px; background:#fff; }
   .est-bienvenida > summary{ padding:13px 15px; cursor:pointer; font-weight:700; font-size:14px; color:var(--ink); }
   .est-bienvenida-cuerpo{ padding:0 15px 15px; }
+  .est-bienvenida-curso{ border-color:var(--amber); background:#fffaf0; }
+  .est-ruta-card{ background:#fff; border:2px solid var(--ink); border-radius:14px; padding:16px 14px 8px; margin-bottom:18px; }
+  .est-ruta-cab{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .est-titulo-grande{ font-size:21px !important; }
+  .est-ruta-resumen{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .est-ruta-resumen span{ background:var(--paper); border-radius:999px; padding:5px 12px; font-size:12.5px; font-weight:700; color:var(--ink); }
+  .student-course-switch-btn{ padding:8px 14px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--ink); font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .student-course-switch-btn.activo{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .login-bienvenida{ background:#fff; border:1px solid var(--line); border-left:5px solid var(--amber); border-radius:12px; padding:16px 18px; margin-bottom:16px; text-align:left; }
+  .login-bienvenida-tit{ font-family:'Source Serif 4', serif; font-size:18px; font-weight:700; color:var(--ink); margin-bottom:8px; }
+  .login-bienvenida p{ font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify; line-height:1.6; margin:0; }
+  /* Modo estudio: mientras se estudia solo se ve el contenido */
+  body.modo-estudio header.brand{ display:none; }
+  body.modo-estudio #logoutBtn{ display:none; }
+  body.modo-estudio .panel{ border:none; background:transparent; padding:0 4px; }
   .est-titulo-seccion{ font-family:'Source Serif 4', serif; font-size:18px; color:var(--ink); margin:0 0 4px; }
   .est-ayuda{ font-size:12.5px; color:#5b6b87; margin:0 0 12px; }
   .ruta-modulo{ border:1px solid var(--line); border-radius:12px; background:#fff; margin-bottom:10px; overflow:hidden; }
@@ -413,6 +428,12 @@
     </div>
 
     <div class="msg info" id="cursoInviteBanner" style="display:none; text-align:center; font-weight:600;"></div>
+
+    <div class="login-bienvenida" id="loginBienvenida" style="display:none;">
+      <div class="login-bienvenida-tit">🏫 Bienvenido/a a la plataforma</div>
+      <p id="loginBienvenidaMsg"></p>
+      <div id="loginBienvenidaVideo"></div>
+    </div>
 
     <div class="card">
       <h2 id="cardTitle">Acceso Administrador</h2>
@@ -500,9 +521,14 @@
     <div class="admin-section" id="studentSection" style="display:none;">
       <div id="studentCourseSwitcher" style="display:none; margin-bottom:14px;">
         <p style="font-size:11.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin:0 0 7px;">Tus cursos</p>
-        <div id="studentCourseSwitcherList" style="display:flex; flex-direction:column; gap:6px;"></div>
+        <div id="studentCourseSwitcherList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
       </div>
       <div id="studentWelcomeBlock">
+        <details class="est-bienvenida est-bienvenida-curso" id="studentBienvenidaCursoTop" open>
+          <summary id="studentBienvenidaCursoTitulo">👋 Bienvenida al curso</summary>
+          <div class="est-bienvenida-cuerpo" id="studentBienvenidaCursoCuerpo"></div>
+        </details>
+
         <div class="est-hero">
           <h3 id="studentCourseName">Curso</h3>
           <div class="est-hero-fila" id="studentAvanceFila" style="display:none;">
@@ -513,22 +539,30 @@
           <button type="button" class="est-cta" id="studentBeginBtn">Iniciar curso</button>
         </div>
 
+        <section class="est-ruta-card">
+          <div class="est-ruta-cab">
+            <div>
+              <h4 class="est-titulo-seccion est-titulo-grande">🗺️ Así es tu curso</h4>
+              <p class="est-ayuda" style="margin:2px 0 0;">Este es el recorrido completo. Toca una lección que ya alcanzaste para volver a ella.</p>
+            </div>
+            <button type="button" class="est-ruta-btn" id="studentRutaToggleBtn">Desplegar todo</button>
+          </div>
+          <div class="est-ruta-resumen" id="studentRutaResumen"></div>
+          <div id="studentRuta"><p class="est-ayuda">Cargando la ruta…</p></div>
+        </section>
+
         <details class="est-bienvenida" id="studentBienvenidaDetalle">
-          <summary>👋 Mensaje de bienvenida</summary>
+          <summary>🏫 Bienvenida a la plataforma</summary>
           <div class="est-bienvenida-cuerpo">
             <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify; line-height:1.6;"></p>
             <div id="studentVideoContainer"></div>
           </div>
         </details>
-
-        <h4 class="est-titulo-seccion">Ruta del curso</h4>
-        <p class="est-ayuda">Aquí ves por dónde vas. Toca una lección que ya alcanzaste para volver a ella.</p>
-        <div id="studentRuta"><p class="est-ayuda">Cargando la ruta…</p></div>
       </div>
       <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
         <div class="est-topbar">
           <div class="est-topbar-fila">
-            <button type="button" class="est-ruta-btn" id="contenidoRutaBtn">📋 Ruta del curso</button>
+            <span style="display:flex; gap:8px;"><button type="button" class="est-ruta-btn" id="contenidoRutaBtn">📋 Ruta del curso</button><button type="button" class="est-ruta-btn est-salir-btn" id="contenidoSalirBtn">↩ Salir</button></span>
             <span id="contenidoTiempoActual" style="font-size:12.5px; color:#5b6b87; white-space:nowrap;">⏱️ 0h 00m</span>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
@@ -587,7 +621,7 @@
           <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Enlace del video tutorial (YouTube)</label>
           <input type="text" id="bienvenidaVideoInput" placeholder="https://www.youtube.com/watch?v=..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
           <button type="button" id="guardarBienvenidaBtn" style="align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar bienvenida</button>
-          <div id="bienvenidaStatus" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓ — ya se aplica a todos los cursos.</div>
+          <div id="bienvenidaStatus" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓. Ya se aplica a todos los cursos.</div>
         </div>
       </div>
 
@@ -614,7 +648,7 @@
         <div style="display:flex; flex-direction:column; gap:6px; margin:6px 0 18px 0; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;">
           <label for="courseSelectorDropdown" style="font-size:12.5px; font-weight:700; color:var(--ink-soft);">📂 Selecciona el curso en el que quieres trabajar</label>
           <select id="courseSelectorDropdown" style="width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; background:#fff;">
-            <option value="">— Selecciona un curso —</option>
+            <option value="">Selecciona un curso</option>
           </select>
           <div style="font-size:11.5px; color:#8493ab;">Así evitas mezclar la información de un curso con la de otro mientras trabajas.</div>
         </div>
@@ -856,6 +890,15 @@
   const studentPctTexto = document.getElementById('studentPctTexto');
   const studentPctBarra = document.getElementById('studentPctBarra');
   const studentBienvenidaDetalle = document.getElementById('studentBienvenidaDetalle');
+  const studentBienvenidaCursoTop = document.getElementById('studentBienvenidaCursoTop');
+  const studentBienvenidaCursoTitulo = document.getElementById('studentBienvenidaCursoTitulo');
+  const studentBienvenidaCursoCuerpo = document.getElementById('studentBienvenidaCursoCuerpo');
+  const studentRutaResumen = document.getElementById('studentRutaResumen');
+  const studentRutaToggleBtn = document.getElementById('studentRutaToggleBtn');
+  const contenidoSalirBtn = document.getElementById('contenidoSalirBtn');
+  const loginBienvenida = document.getElementById('loginBienvenida');
+  const loginBienvenidaMsg = document.getElementById('loginBienvenidaMsg');
+  const loginBienvenidaVideo = document.getElementById('loginBienvenidaVideo');
   const studentRuta = document.getElementById('studentRuta');
   const contenidoTiempoActual = document.getElementById('contenidoTiempoActual');
 
@@ -867,7 +910,7 @@
 
   // ---------- Permanencia e inactividad (basado en la hora real, no en "ticks") ----------
   // Antes se contaba sumando un bloque fijo cada vez que un setInterval lograba disparar, y
-  // eso se detenía por completo si la pestaña quedaba en segundo plano — el navegador puede
+  // eso se detenía por completo si la pestaña quedaba en segundo plano, el navegador puede
   // retrasar esos temporizadores, así que el conteo quedaba corto y el cierre por
   // inactividad llegaba tarde. Ahora todo se mide comparando Date.now() contra la última
   // marca guardada: el tiempo de permanencia sigue corriendo aunque la pestaña esté en
@@ -928,7 +971,7 @@
 
   // Reloj visible para el estudiante: muestra en vivo el tiempo que lleva en este curso.
   // Solo lee segundosMostrados (que acreditarPermanenciaHasta va actualizando) más una
-  // estimación en vivo de lo transcurrido desde la última marca — así nunca se duplica.
+  // estimación en vivo de lo transcurrido desde la última marca, así nunca se duplica.
   function iniciarRelojVisible(){
     detenerRelojVisible();
     segundosMostrados = tiempoAcumuladoBaseSegundos;
@@ -1060,7 +1103,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   function renderRoleUI(){
     cardTitle.textContent = mode === 'login'
       ? roleInfo[currentRole].title
-      : `Crear cuenta — ${roleInfo[currentRole].label}`;
+      : `Crear cuenta: ${roleInfo[currentRole].label}`;
     cardSubtitle.textContent = mode === 'login'
       ? 'Inicia sesión con tu correo y contraseña.'
       : (cursoInvitacionId ? 'Completa tus datos para matricularte.' : 'Crea una cuenta de prueba con este rol.');
@@ -1090,8 +1133,24 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       cursoInviteBanner.textContent = cursoInvitacionNombre
         ? `Te estás inscribiendo en: ${cursoInvitacionNombre}`
         : 'Te estás inscribiendo a un curso.';
+      loginBienvenida.style.display = 'block';
     }
   }
+
+  // Bienvenida a la plataforma en la pantalla de inscripción (enlace de un curso)
+  async function cargarBienvenidaInscripcion(){
+    if (!cursoInvitacionId) return;
+    let datos = {};
+    try {
+      const sn = await getDoc(doc(db, 'configuracion', 'bienvenida'));
+      if (sn.exists()) datos = sn.data();
+    } catch (err) { /* sin permiso o sin conexión: se usa el mensaje por defecto */ }
+    loginBienvenidaMsg.textContent = datos.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO;
+    const visor = construirVisorDeVideo(datos.videoUrl);
+    loginBienvenidaVideo.innerHTML = visor ? `<div style="margin-top:12px;">${visor}</div>` : '';
+    loginBienvenida.style.display = 'block';
+  }
+  cargarBienvenidaInscripcion();
 
   roleTabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1263,7 +1322,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       cursoTrabajoId = cursoPendienteSeleccion;
       cursoPendienteSeleccion = '';
     }
-    courseSelectorDropdown.innerHTML = '<option value="">— Selecciona un curso —</option>' +
+    courseSelectorDropdown.innerHTML = '<option value="">Selecciona un curso</option>' +
       cursosData.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
     // Si el curso que estaba elegido sigue existiendo, lo dejamos elegido; si no, se limpia.
     if (cursoTrabajoId && cursosData.some(c => c.id === cursoTrabajoId)) {
@@ -1373,7 +1432,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       li.style.gap = '10px';
 
       const opcionesProfesores = profesoresData.map(p =>
-        `<option value="${p.uid}" ${p.uid === curso.profesorUid ? 'selected' : ''}>${p.nombre}${p.codigo ? ' — ' + p.codigo : ''}</option>`
+        `<option value="${p.uid}" ${p.uid === curso.profesorUid ? 'selected' : ''}>${p.nombre}${p.codigo ? ' · ' + p.codigo : ''}</option>`
       ).join('');
 
       li.innerHTML = `
@@ -1399,7 +1458,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
           <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Profesor asignado a este curso</label>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px;">
             <select class="profesor-select" data-curso-id="${curso.id}" style="flex:1; min-width:160px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; background:#fff;">
-              <option value="">— Sin profesor asignado —</option>
+              <option value="">Sin profesor asignado</option>
               ${opcionesProfesores}
             </select>
             <button type="button" class="assign-btn" data-curso-id="${curso.id}" style="padding:9px 14px; border:none; border-radius:8px; background:var(--teal); color:#fff; font-size:13px; font-weight:600; cursor:pointer;">Guardar</button>
@@ -2478,7 +2537,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       contenidoSeccionIntro.style.display = 'none';
     }
 
-    // Ruta tipo "chips" (más visual que texto plano) — se oculta en video para maximizar la pantalla
+    // Ruta tipo "chips" (más visual que texto plano), se oculta en video para maximizar la pantalla
     contenidoBreadcrumb.innerHTML = [item.moduloNombre, item.temaNombre, item.subtemaNombre]
       .map(t => `<span style="background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:3px 10px;">${t}</span>`)
       .join('<span style="color:#c3cbda;">→</span>');
@@ -2542,7 +2601,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(22,35,61,0.15);">
           <div id="yt-player-holder" style="position:absolute; top:0; left:0; width:100%; height:100%;"></div>
         </div>
-        <p style="text-align:center; font-size:11.5px; color:#8493ab; margin:10px 0 0;">🔇 El video empieza en silencio — usa el ícono de sonido del reproductor para activarlo.</p>
+        <p style="text-align:center; font-size:11.5px; color:#8493ab; margin:10px 0 0;">🔇 El video empieza en silencio, usa el ícono de sonido del reproductor para activarlo.</p>
       `;
       crearReproductorYoutube(youtubeId, textoContinuar);
     } else if (driveEmbed) {
@@ -2667,7 +2726,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             <span class="ruta-num">${completoMod ? '✓' : mi + 1}</span>
             <span>
               <div class="ruta-modulo-nombre">${escaparHtmlImp(mo.nombre)}</div>
-              <div class="ruta-modulo-meta">${hechos} de ${subs.length} lecciones${chip}</div>
+              <div class="ruta-modulo-meta">${hechos} de ${subs.length} lecci${subs.length === 1 ? 'ón' : 'ones'}${chip}</div>
             </span>
             <span class="ruta-flecha">▾</span>
           </summary>
@@ -2725,16 +2784,42 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       studentAvanceFila.style.display = contenidoFlat.length ? 'block' : 'none';
       studentPctTexto.textContent = `${pct}%`;
       studentPctBarra.style.width = `${pct}%`;
+      const estr = construirEstructuraRuta();
+      const nTemas = estr.reduce((a, m) => a + m.temas.length, 0);
+      const nLecc = estr.reduce((a, m) => a + m.temas.reduce((b, t) => b + t.subtemas.length, 0), 0);
+      studentRutaResumen.innerHTML = nLecc ? `<span>📚 ${estr.length} módulo${estr.length === 1 ? '' : 's'}</span><span>🧩 ${nTemas} tema${nTemas === 1 ? '' : 's'}</span><span>📝 ${nLecc} lecci${nLecc === 1 ? 'ón' : 'ones'}</span>` : '';
       pintarRutaCurso(studentRuta, (idx) => {
         indiceInicioForzado = idx;
         studentBeginBtn.click();
       });
+      // Primera vez: todo el curso a la vista. Si ya avanzó, solo se abre el módulo actual.
+      const detallesRuta = studentRuta.querySelectorAll('details.ruta-modulo');
+      if (!progresoGuardadoActual) detallesRuta.forEach(d => { d.open = true; });
+      studentRutaToggleBtn.textContent = Array.from(detallesRuta).every(d => d.open) ? 'Plegar todo' : 'Desplegar todo';
       // La bienvenida se muestra abierta solo la primera vez; después queda plegada.
-      studentBienvenidaDetalle.open = !progresoGuardadoActual;
+      studentBienvenidaCursoTop.open = !progresoGuardadoActual;
     } catch (err) {
       studentRuta.innerHTML = '<p class="est-ayuda">No se pudo cargar la ruta del curso. Aun así puedes iniciar el curso con el botón de arriba.</p>';
     }
   }
+
+  studentRutaToggleBtn.addEventListener('click', () => {
+    const detalles = Array.from(studentRuta.querySelectorAll('details.ruta-modulo'));
+    const abrir = !detalles.every(d => d.open);
+    detalles.forEach(d => { d.open = abrir; });
+    studentRutaToggleBtn.textContent = abrir ? 'Plegar todo' : 'Desplegar todo';
+  });
+
+  // Salir del modo estudio: guarda el avance y vuelve al inicio del curso
+  contenidoSalirBtn.addEventListener('click', async () => {
+    try { guardarProgresoEstudiante(false); } catch (err) {}
+    detenerConteoDePermanencia();
+    detenerRelojVisible();
+    cerrarRutaOverlay();
+    if (ytPlayerActual) { try { ytPlayerActual.destroy(); } catch (err) {} ytPlayerActual = null; }
+    window.scrollTo({ top: 0 });
+    if (auth.currentUser) await mostrarPanelSegunUsuario(auth.currentUser.uid);
+  });
 
   document.addEventListener('click', (e) => {
     if (e.target.closest('#contenidoRutaBtn') || e.target.closest('#contenidoRutaFinalBtn')) abrirRutaOverlay();
@@ -2783,6 +2868,9 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       studentCourseSwitcher.style.display = 'none';
       panelBadge.style.display = 'none';
       panelTitle.style.display = 'none';
+      panelSubtitle.style.display = 'none';
+      document.body.classList.add('modo-estudio');
+      window.scrollTo({ top: 0 });
       studentSection.style.borderTop = 'none';
       studentSection.style.paddingTop = '0';
       iniciarConteoDePermanencia();
@@ -3365,7 +3453,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
             <div style="font-size:42px; margin-bottom:6px;">${!calificado ? '🔎' : (aprobado ? '🎉' : '📌')}</div>
             <h3 style="font-family:'Source Serif 4', serif; margin:0 0 6px; color:var(--ink);">${calificado ? (aprobado ? '¡Aprobado!' : 'No alcanzó el mínimo') : 'Repaso completado'}</h3>
             <p style="font-size:26px; font-weight:700; color:${!calificado ? 'var(--ink)' : (aprobado ? 'var(--teal)' : 'var(--danger)')}; margin:0 0 6px;">${puntaje} / 100</p>
-            ${calificado ? `<p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 18px;">El mínimo para aprobar es 70 de 100.</p>` : '<p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 18px;">Este repaso no lleva nota — revisa tus respuestas abajo.</p>'}
+            ${calificado ? `<p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 18px;">El mínimo para aprobar es 70 de 100.</p>` : '<p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 18px;">Este repaso no lleva nota, revisa tus respuestas abajo.</p>'}
           </div>
           <div style="text-align:left; max-height:260px; overflow-y:auto; margin-bottom:18px;">${correccionHtml}</div>
           <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
@@ -3387,9 +3475,9 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
   }
 
   // ---------- Actividades por nivel ----------
-  // Subtema: "Pregunta de reflexión" — una consigna que el estudiante responde solo con
+  // Subtema: "Pregunta de reflexión", una consigna que el estudiante responde solo con
   // texto, para que plasme su propio entendimiento de lo leído (no lleva nota).
-  // Tema: "Actividad de aprendizaje" — una consigna más completa que el estudiante puede
+  // Tema: "Actividad de aprendizaje", una consigna más completa que el estudiante puede
   // responder con texto y/o un enlace a un documento (por ejemplo, de Google Drive).
   // Ambas comparten el mismo mecanismo (una colección "actividades" y otra
   // "actividadesRespuestas", identificadas por nivel + nivelId), y ambas las puede
@@ -3621,7 +3709,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       panel.innerHTML = `
         <h5 style="margin:0 0 4px; font-size:13px; color:var(--ink);">📊 Notas de los estudiantes</h5>
-        <p style="font-size:11px; color:#8493ab; margin:0 0 10px;">Fórmula actual: Permanencia ${pesoPermanencia}% · Exámenes de Temas ${pesoTemas}% · Examen de Módulo ${pesoModulo}% · Examen Final ${pesoFinal}% — mínimo 70/100 para aprobar el curso.</p>
+        <p style="font-size:11px; color:#8493ab; margin:0 0 10px;">Fórmula actual: Permanencia ${pesoPermanencia}% · Exámenes de Temas ${pesoTemas}% · Examen de Módulo ${pesoModulo}% · Examen Final ${pesoFinal}%, mínimo 70/100 para aprobar el curso.</p>
       ` + estudiantes.map(est => {
           const propios = resultados.filter(r => r.uid === est.uid && r.calificado);
           const ordenNivel = { tema: 1, modulo: 2, curso: 3 };
@@ -3672,7 +3760,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div>
                   <div style="font-weight:700; font-size:13px; color:var(--ink);">${est.nombre || '(sin nombre)'}</div>
-                  <div style="font-size:11.5px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '—'}</div>
+                  <div style="font-size:11.5px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '-'}</div>
                 </div>
                 <div style="text-align:right;">
                   <div style="font-size:16px; font-weight:700; color:${aprobadoCurso ? 'var(--teal)' : 'var(--danger)'};">${notaFinal}/100</div>
@@ -3716,7 +3804,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       <div style="display:flex; flex-direction:column; gap:8px;">
         <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Mensaje de bienvenida de este curso</label>
         <textarea class="bc-msg" rows="6" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
-        <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Enlace del video de este curso (YouTube o Google Drive) — opcional</label>
+        <label style="font-size:12px; font-weight:600; color:var(--ink-soft);">Enlace del video de este curso (YouTube o Google Drive), opcional</label>
         <input type="text" class="bc-video" placeholder="https://www.youtube.com/watch?v=..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
         <button type="button" class="bc-guardar" style="align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar bienvenida del curso</button>
         <div class="bc-status" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓</div>
@@ -3749,10 +3837,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         Los exámenes se imprimen desde la pestaña <strong>7 Notas</strong>, con el botón 🖨️.
       </p>
       <div style="display:flex; flex-direction:column; gap:8px;">
-        <textarea class="ic-texto" rows="4" placeholder="Ej. IMASEVI — Instituto de Formación Vial&#10;Dirección / teléfono" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
+        <textarea class="ic-texto" rows="4" placeholder="Ej. IMASEVI, Instituto de Formación Vial&#10;Dirección / teléfono" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
         <div class="ic-nota" style="display:none; font-size:11.5px; color:#8493ab;">Se copió el encabezado general que tenías guardado antes. Pulsa "Guardar encabezado" para dejarlo en este curso.</div>
         <button type="button" class="ic-guardar" style="align-self:flex-start; padding:8px 14px; border:none; border-radius:6px; background:var(--teal); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Guardar encabezado</button>
-        <div class="ic-status" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓ — ya se usa en los exámenes impresos de este curso.</div>
+        <div class="ic-status" style="font-size:12px; color:var(--teal); display:none;">Guardado ✓. Ya se usa en los exámenes impresos de este curso.</div>
       </div>
     `;
     const texto = panel.querySelector('.ic-texto');
@@ -3826,7 +3914,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         li.appendChild(titulo);
         li.appendChild(crearFilaEvaluacion({ nivel: 'modulo', nivelId: modulo.id, cursoId, etiqueta: '📝 Examen del módulo (lleva nota)' }));
         temas.forEach((tema, j) => {
-          li.appendChild(crearFilaEvaluacion({ nivel: 'tema', nivelId: tema.id, cursoId, etiqueta: `🔎 Retroalimentación — Tema ${j + 1}: ${tema.nombre} (sin nota)` }));
+          li.appendChild(crearFilaEvaluacion({ nivel: 'tema', nivelId: tema.id, cursoId, etiqueta: `🔎 Retroalimentación: Tema ${j + 1}: ${tema.nombre} (sin nota)` }));
         });
         ul.appendChild(li);
       }
@@ -4639,7 +4727,7 @@ Contenido del subtema.
               estudiantes.map(est => `
                 <li style="padding:7px 9px; background:#fff; border:1px solid var(--line); border-radius:6px;">
                   <div style="font-weight:600;">${est.nombre || est.email}</div>
-                  <div style="font-size:11px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '—'}</div>
+                  <div style="font-size:11px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '-'}</div>
                 </li>`).join('') +
               '</ul>';
           }
@@ -4763,7 +4851,7 @@ Contenido del subtema.
       <html lang="es">
       <head>
         <meta charset="UTF-8">
-        <title>Examen — ${nombreEstudiante}</title>
+        <title>Examen · ${nombreEstudiante}</title>
         <style>
           @page { size: letter; margin: 1.5cm; }
           * { box-sizing: border-box; }
@@ -4791,7 +4879,7 @@ Contenido del subtema.
         <h1>Resultado de Examen</h1>
         <p class="subtitulo">Aula Virtual IMASEVI</p>
         <table>
-          <tr><td class="etiqueta">Nombre completo</td><td>${nombreEstudiante}</td><td class="etiqueta">${tipoDocumentoLabel}</td><td>${numeroDocumento || '—'}</td></tr>
+          <tr><td class="etiqueta">Nombre completo</td><td>${nombreEstudiante}</td><td class="etiqueta">${tipoDocumentoLabel}</td><td>${numeroDocumento || '-'}</td></tr>
           <tr><td class="etiqueta">Curso</td><td>${cursoNombre}</td><td class="etiqueta">Examen</td><td>${tituloExamen}</td></tr>
         </table>
         <div class="resultado">
@@ -4978,7 +5066,7 @@ Contenido del subtema.
       const cursoSnap = await getDoc(doc(db, 'cursos', cursoId));
       if (!cursoSnap.exists()) {
         panelSubtitle.style.display = 'block';
-        panelSubtitle.textContent = 'Este curso ya no está disponible.';
+        panelSubtitle.textContent = 'Este curso no está disponible por ahora.';
         studentWelcomeBlock.style.display = 'none';
         return;
       }
@@ -4988,11 +5076,11 @@ Contenido del subtema.
 
       panelSubtitle.style.display = 'none';
       studentWelcomeBlock.style.display = 'block';
-      studentSection.style.borderTop = '';
-      studentSection.style.paddingTop = '';
+      studentSection.style.borderTop = 'none';
+      studentSection.style.paddingTop = '0';
+      studentSection.style.marginTop = '0';
       studentCourseName.textContent = curso.nombre;
       studentWelcomeMsg.textContent = bienvenidaData.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO;
-
       const visorBienvenidaHtml = construirVisorDeVideo(bienvenidaData.videoUrl);
       if (visorBienvenidaHtml) {
         studentVideoContainer.innerHTML = `<div style="margin-top:10px;">${visorBienvenidaHtml}</div>`;
@@ -5002,17 +5090,27 @@ Contenido del subtema.
         studentVideoContainer.innerHTML = '';
       }
 
-      // Bienvenida propia de este curso (opcional), después de la bienvenida general
+      // En el espacio de arriba va la bienvenida del curso. Si el curso no tiene una propia,
+      // ahí se muestra la bienvenida general de la plataforma.
       const bc = curso.bienvenidaCurso;
-      if (bc && (bc.mensaje || bc.videoUrl)) {
+      const tieneBienvenidaCurso = !!(bc && (bc.mensaje || bc.videoUrl));
+      if (tieneBienvenidaCurso) {
         const visorCurso = construirVisorDeVideo(bc.videoUrl);
-        studentVideoContainer.insertAdjacentHTML('beforeend', `
-          <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--line);">
-            <div style="font-weight:700; font-size:14px; color:var(--ink); margin-bottom:6px;">Bienvenida a este curso</div>
-            ${bc.mensaje ? `<p style="white-space:pre-wrap; text-align:justify; font-size:13.5px; line-height:1.6; margin:0 0 10px;">${escaparHtmlImp(bc.mensaje)}</p>` : ''}
-            ${visorCurso ? `<div style="margin-top:10px;">${visorCurso}</div>` : ''}
-          </div>`);
+        studentBienvenidaCursoTitulo.textContent = '👋 Bienvenida al curso';
+        studentBienvenidaCursoCuerpo.innerHTML = `
+          ${bc.mensaje ? `<p style="white-space:pre-wrap; text-align:justify; font-size:13.5px; line-height:1.6; margin:0 0 10px; color:#5b6b87;">${escaparHtmlImp(bc.mensaje)}</p>` : ''}
+          ${visorCurso ? `<div style="margin-top:10px;">${visorCurso}</div>` : ''}`;
+        studentBienvenidaDetalle.style.display = '';
+      } else {
+        studentBienvenidaCursoTitulo.textContent = '👋 Bienvenida a la plataforma';
+        studentBienvenidaCursoCuerpo.innerHTML = `
+          <p style="white-space:pre-wrap; text-align:justify; font-size:13.5px; line-height:1.6; margin:0 0 10px; color:#5b6b87;">${escaparHtmlImp(bienvenidaData.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO)}</p>
+          ${visorBienvenidaHtml ? `<div style="margin-top:10px;">${visorBienvenidaHtml}</div>` : ''}`;
+        studentVideoContainer.innerHTML = '';
+        studentBienvenidaDetalle.style.display = 'none';
       }
+      studentBienvenidaDetalle.open = false;
+      document.querySelectorAll('#studentCourseSwitcherList .student-course-switch-btn').forEach(b => b.classList.toggle('activo', b.dataset.cursoId === cursoId));
 
       studentContentPlaceholder.style.display = 'none';
       studentBeginBtn.style.display = 'inline-block';
@@ -5046,8 +5144,10 @@ Contenido del subtema.
 
   async function mostrarPanelSegunUsuario(uid){
     // Restaura el encabezado y la bienvenida por si quedaron ocultos de una sesión anterior
+    document.body.classList.remove('modo-estudio');
     panelBadge.style.display = 'block';
     panelTitle.style.display = 'block';
+    panelSubtitle.style.display = 'block';
     studentWelcomeBlock.style.display = 'block';
     profesorSection.style.display = 'none';
     studentSection.style.borderTop = '';
@@ -5080,7 +5180,7 @@ Contenido del subtema.
       const datosUsuario = snap.data();
 
       // Un estudiante ahora puede estar matriculado en varios cursos a la vez. Las cuentas
-      // creadas antes de este cambio solo tenían "cursoId" (un solo curso) — se migran en
+      // creadas antes de este cambio solo tenían "cursoId" (un solo curso), se migran en
       // silencio la primera vez que entran, sin perder su curso ya asignado.
       let cursosIds = Array.isArray(datosUsuario.cursosIds) ? [...datosUsuario.cursosIds] : [];
       if (cursosIds.length === 0 && datosUsuario.cursoId) {
@@ -5088,7 +5188,7 @@ Contenido del subtema.
       }
 
       // Si entró usando el enlace de invitación de un curso y todavía no está matriculado
-      // en ese curso, se matricula ahora mismo — así es como un estudiante que ya tiene
+      // en ese curso, se matricula ahora mismo, así es como un estudiante que ya tiene
       // cuenta puede sumar más cursos: simplemente abriendo el enlace del nuevo curso.
       if (cursoInvitacionId && !cursosIds.includes(cursoInvitacionId)) {
         cursosIds.push(cursoInvitacionId);
@@ -5102,28 +5202,44 @@ Contenido del subtema.
         panelSubtitle.textContent = 'Todavía no estás matriculado/a en ningún curso.';
         studentSection.style.display = 'none';
       } else {
-        studentSection.style.display = 'block';
-        if (cursosIds.length > 1) {
-          studentCourseSwitcher.style.display = 'block';
-          studentCourseSwitcherList.innerHTML = 'Cargando…';
-          const infoCursos = await Promise.all(cursosIds.map(async (id) => {
-            try {
-              const s = await getDoc(doc(db, 'cursos', id));
-              return { id, nombre: s.exists() ? s.data().nombre : '(curso no disponible)' };
-            } catch (err) {
-              return { id, nombre: '(curso no disponible)' };
-            }
-          }));
-          studentCourseSwitcherList.innerHTML = infoCursos.map(c => `
-            <button type="button" class="student-course-switch-btn" data-curso-id="${c.id}" style="text-align:left; padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); font-size:13px; font-weight:600; cursor:pointer;">📘 ${c.nombre}</button>
-          `).join('');
-          studentCourseSwitcherList.querySelectorAll('.student-course-switch-btn').forEach(btn => {
-            btn.addEventListener('click', () => mostrarCursoParaEstudiante(uid, btn.dataset.cursoId));
-          });
-        } else {
-          studentCourseSwitcher.style.display = 'none';
+        // Solo se muestran cursos que todavía existen (los eliminados se quitan en silencio)
+        const infoCursos = [];
+        const idsFantasma = [];
+        await Promise.all(cursosIds.map(async (id) => {
+          try {
+            const sn = await getDoc(doc(db, 'cursos', id));
+            if (sn.exists()) infoCursos.push({ id, nombre: sn.data().nombre });
+            else idsFantasma.push(id);
+          } catch (err) { infoCursos.push({ id, nombre: 'Curso' }); }
+        }));
+        infoCursos.sort((x, y) => cursosIds.indexOf(x.id) - cursosIds.indexOf(y.id));
+        if (idsFantasma.length > 0) {
+          try { await updateDoc(doc(db, 'usuarios', uid), { cursosIds: cursosIds.filter(id => !idsFantasma.includes(id)) }); } catch (err) { /* no es grave */ }
         }
-        await mostrarCursoParaEstudiante(uid, cursosIds[0]);
+        if (infoCursos.length === 0) {
+          panelSubtitle.style.display = 'block';
+          panelSubtitle.textContent = 'Por ahora no tienes cursos disponibles. Si crees que es un error, comunícate con IMASEVI.';
+          studentSection.style.display = 'none';
+        } else {
+          studentSection.style.display = 'block';
+          // Con un curso elegido, el encabezado genérico se reemplaza por la bienvenida del curso
+          panelBadge.style.display = 'none';
+          panelTitle.style.display = 'none';
+          panelSubtitle.style.display = 'none';
+          if (infoCursos.length > 1) {
+            studentCourseSwitcher.style.display = 'block';
+            studentCourseSwitcherList.innerHTML = infoCursos.map(c => `
+              <button type="button" class="student-course-switch-btn" data-curso-id="${c.id}">📘 ${escaparHtmlImp(c.nombre)}</button>
+            `).join('');
+            studentCourseSwitcherList.querySelectorAll('.student-course-switch-btn').forEach(btn => {
+              btn.addEventListener('click', () => mostrarCursoParaEstudiante(uid, btn.dataset.cursoId));
+            });
+          } else {
+            studentCourseSwitcher.style.display = 'none';
+          }
+          const primero = infoCursos.find(c => c.id === cursoInvitacionId) || infoCursos[0];
+          await mostrarCursoParaEstudiante(uid, primero.id);
+        }
       }
     } else if (rol === 'profesor') {
       adminSection.style.display = 'none';
@@ -5134,7 +5250,7 @@ Contenido del subtema.
       iniciarPanelProfesor(uid);
     } else {
       panelSubtitle.style.display = 'block';
-      panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío — lo iremos llenando en los próximos pasos.`;
+      panelSubtitle.textContent = `Este es tu panel de ${roleInfo[rol]?.label || rol}. Todavía está vacío, lo iremos llenando en los próximos pasos.`;
       adminSection.style.display = 'none';
     }
   }
@@ -5203,7 +5319,7 @@ Contenido del subtema.
       try { cerradoPorInactividad = sessionStorage.getItem('imasevi_cierre_por_inactividad') === 'true'; } catch (err) {}
       if (cerradoPorInactividad) {
         try { sessionStorage.removeItem('imasevi_cierre_por_inactividad'); } catch (err) {}
-        showInfo('Tu sesión se cerró automáticamente por 10 minutos sin actividad. Ese tiempo no se contó como permanencia — vuelve a iniciar sesión para continuar.');
+        showInfo('Tu sesión se cerró automáticamente por 10 minutos sin actividad. Ese tiempo no se contó como permanencia, vuelve a iniciar sesión para continuar.');
       }
       return;
     }
