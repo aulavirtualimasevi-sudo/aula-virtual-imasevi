@@ -342,6 +342,9 @@
   .est-barra{ height:8px; background:rgba(255,255,255,.2); border-radius:999px; overflow:hidden; margin-top:6px; }
   .est-barra > div{ height:100%; background:var(--amber); border-radius:999px; transition:width .4s ease; }
   .est-cta{ margin-top:6px; padding:13px 24px; border:none; border-radius:10px; background:var(--amber); color:#fff; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .est-cta-fila{ display:flex; flex-wrap:wrap; gap:10px; }
+  .est-cta-sec{ background:transparent; border:2px solid rgba(255,255,255,.7); color:#fff; padding:11px 20px; }
+  .est-cta-sec:hover{ background:rgba(255,255,255,.12); }
   .est-cta:disabled{ opacity:.65; cursor:default; }
   .est-bienvenida{ margin-bottom:18px; border:1px solid var(--line); border-radius:12px; background:#fff; }
   .est-bienvenida > summary{ padding:13px 15px; cursor:pointer; font-weight:700; font-size:14px; color:var(--ink); }
@@ -540,7 +543,7 @@
             <div class="est-barra"><div id="studentPctBarra" style="width:0%;"></div></div>
           </div>
           <div class="est-hero-fila" id="studentTiempoAcumulado" style="display:none;"></div>
-          <button type="button" class="est-cta" id="studentBeginBtn">Iniciar curso</button>
+          <div class="est-cta-fila"><button type="button" class="est-cta" id="studentBeginBtn">Iniciar curso</button><button type="button" class="est-cta est-cta-sec" id="studentRestartBtn" style="display:none;">↻ Iniciar de nuevo</button></div>
         </div>
 
         <section class="est-ruta-card">
@@ -832,6 +835,7 @@
   const studentCourseSwitcherList = document.getElementById('studentCourseSwitcherList');
   const studentCourseName = document.getElementById('studentCourseName');
   const studentBeginBtn = document.getElementById('studentBeginBtn');
+  const studentRestartBtn = document.getElementById('studentRestartBtn');
   const studentWelcomeBlock = document.getElementById('studentWelcomeBlock');
   const studentContentPlaceholder = document.getElementById('studentContentPlaceholder');
   const contenidoBreadcrumb = document.getElementById('contenidoBreadcrumb');
@@ -2940,6 +2944,30 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenidoPosicion.textContent = `100% · parte ${contenidoFlat.length} de ${contenidoFlat.length}`;
     guardarProgresoEstudiante(true);
   }
+
+  // Iniciar de nuevo: el estudiante decide volver al principio. Se reinicia solo el recorrido
+  // (dónde va y qué lecciones tiene abiertas); el tiempo de permanencia y las notas de
+  // exámenes ya registrados NO se pierden.
+  studentRestartBtn.addEventListener('click', async () => {
+    if (!estudianteCursoIdActual || !identidadActual || !identidadActual.uid) return;
+    const ok = confirm('¿Quieres volver a empezar el curso desde el principio?\n\nTu tiempo en la plataforma y tus notas de exámenes ya registradas se conservan.');
+    if (!ok) return;
+    studentRestartBtn.disabled = true;
+    studentBeginBtn.disabled = true;
+    try {
+      const reinicio = { terminado: false, indice: 0, maxIndice: -1, bloqueId: '', actualizado: Date.now() };
+      await updateDoc(doc(db, 'usuarios', identidadActual.uid), { [`progresoCursos.${estudianteCursoIdActual}`]: reinicio });
+      progresoGuardadoActual = null;
+      indiceInicioForzado = null;
+      studentRestartBtn.style.display = 'none';
+      studentBeginBtn.disabled = false;
+      studentBeginBtn.click();
+    } catch (err) {
+      alert('No se pudo reiniciar el curso. Revisa tu conexión e intenta de nuevo.');
+      studentRestartBtn.disabled = false;
+      studentBeginBtn.disabled = false;
+    }
+  });
 
   studentBeginBtn.addEventListener('click', async () => {
     if (!estudianteCursoIdActual) return;
@@ -5236,6 +5264,8 @@ Contenido del subtema.
       estudianteCursoIdActual = cursoId;
       progresoGuardadoActual = (datosUsuario.progresoCursos && datosUsuario.progresoCursos[cursoId]) || null;
       studentBeginBtn.textContent = (progresoGuardadoActual && !progresoGuardadoActual.terminado) ? 'Continuar donde quedaste' : 'Iniciar curso';
+      studentRestartBtn.style.display = progresoGuardadoActual ? 'inline-block' : 'none';
+      studentRestartBtn.disabled = false;
       horasMinimasActual = curso.horasMinimas || 0;
       // Compatibilidad: si esta cuenta todavía tiene tiempo guardado de la época de un solo
       // curso (tiempoAcumuladoSegundos) y el curso coincide, se usa ese como punto de partida.
