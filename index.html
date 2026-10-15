@@ -550,14 +550,6 @@
           <div class="est-ruta-resumen" id="studentRutaResumen"></div>
           <div id="studentRuta"><p class="est-ayuda">Cargando la ruta…</p></div>
         </section>
-
-        <details class="est-bienvenida" id="studentBienvenidaDetalle">
-          <summary>🏫 Bienvenida a la plataforma</summary>
-          <div class="est-bienvenida-cuerpo">
-            <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify; line-height:1.6;"></p>
-            <div id="studentVideoContainer"></div>
-          </div>
-        </details>
       </div>
       <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
         <div class="est-topbar">
@@ -835,8 +827,6 @@
   const studentCourseSwitcher = document.getElementById('studentCourseSwitcher');
   const studentCourseSwitcherList = document.getElementById('studentCourseSwitcherList');
   const studentCourseName = document.getElementById('studentCourseName');
-  const studentWelcomeMsg = document.getElementById('studentWelcomeMsg');
-  const studentVideoContainer = document.getElementById('studentVideoContainer');
   const studentBeginBtn = document.getElementById('studentBeginBtn');
   const studentWelcomeBlock = document.getElementById('studentWelcomeBlock');
   const studentContentPlaceholder = document.getElementById('studentContentPlaceholder');
@@ -889,7 +879,6 @@
   const studentAvanceFila = document.getElementById('studentAvanceFila');
   const studentPctTexto = document.getElementById('studentPctTexto');
   const studentPctBarra = document.getElementById('studentPctBarra');
-  const studentBienvenidaDetalle = document.getElementById('studentBienvenidaDetalle');
   const studentBienvenidaCursoTop = document.getElementById('studentBienvenidaCursoTop');
   const studentBienvenidaCursoTitulo = document.getElementById('studentBienvenidaCursoTitulo');
   const studentBienvenidaCursoCuerpo = document.getElementById('studentBienvenidaCursoCuerpo');
@@ -5080,15 +5069,7 @@ Contenido del subtema.
       studentSection.style.paddingTop = '0';
       studentSection.style.marginTop = '0';
       studentCourseName.textContent = curso.nombre;
-      studentWelcomeMsg.textContent = bienvenidaData.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO;
       const visorBienvenidaHtml = construirVisorDeVideo(bienvenidaData.videoUrl);
-      if (visorBienvenidaHtml) {
-        studentVideoContainer.innerHTML = `<div style="margin-top:10px;">${visorBienvenidaHtml}</div>`;
-      } else if (bienvenidaData.videoUrl) {
-        studentVideoContainer.innerHTML = `<p style="color:var(--danger); font-size:12.5px;">El enlace del video no se pudo reconocer (usa YouTube o Google Drive).</p>`;
-      } else {
-        studentVideoContainer.innerHTML = '';
-      }
 
       // En el espacio de arriba va la bienvenida del curso. Si el curso no tiene una propia,
       // ahí se muestra la bienvenida general de la plataforma.
@@ -5100,16 +5081,12 @@ Contenido del subtema.
         studentBienvenidaCursoCuerpo.innerHTML = `
           ${bc.mensaje ? `<p style="white-space:pre-wrap; text-align:justify; font-size:13.5px; line-height:1.6; margin:0 0 10px; color:#5b6b87;">${escaparHtmlImp(bc.mensaje)}</p>` : ''}
           ${visorCurso ? `<div style="margin-top:10px;">${visorCurso}</div>` : ''}`;
-        studentBienvenidaDetalle.style.display = '';
       } else {
         studentBienvenidaCursoTitulo.textContent = '👋 Bienvenida a la plataforma';
         studentBienvenidaCursoCuerpo.innerHTML = `
           <p style="white-space:pre-wrap; text-align:justify; font-size:13.5px; line-height:1.6; margin:0 0 10px; color:#5b6b87;">${escaparHtmlImp(bienvenidaData.mensaje || MENSAJE_BIENVENIDA_POR_DEFECTO)}</p>
           ${visorBienvenidaHtml ? `<div style="margin-top:10px;">${visorBienvenidaHtml}</div>` : ''}`;
-        studentVideoContainer.innerHTML = '';
-        studentBienvenidaDetalle.style.display = 'none';
       }
-      studentBienvenidaDetalle.open = false;
       document.querySelectorAll('#studentCourseSwitcherList .student-course-switch-btn').forEach(b => b.classList.toggle('activo', b.dataset.cursoId === cursoId));
 
       studentContentPlaceholder.style.display = 'none';
