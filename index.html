@@ -743,6 +743,22 @@
   const contenidoVolverInicioBtn = document.getElementById('contenidoVolverInicioBtn');
   let contenidoFlat = [];
   let contenidoIndex = 0;
+  let progresoGuardadoActual = null; // dónde se quedó el estudiante la última vez en el curso abierto
+
+  // Guarda en la cuenta del estudiante el punto exacto donde va, para que al volver
+  // (por decisión propia o por cierre por inactividad) retome desde ahí.
+  function guardarProgresoEstudiante(terminado){
+    try {
+      if (!identidadActual || identidadActual.rolCrudo !== 'estudiante' || !identidadActual.uid) return;
+      if (!estudianteCursoIdActual || contenidoFlat.length === 0) return;
+      const item = contenidoFlat[Math.min(contenidoIndex, contenidoFlat.length - 1)];
+      const dato = terminado
+        ? { terminado: true, actualizado: Date.now() }
+        : { terminado: false, indice: contenidoIndex, bloqueId: (item && item.bloque && item.bloque.id) || '', actualizado: Date.now() };
+      progresoGuardadoActual = dato;
+      updateDoc(doc(db, 'usuarios', identidadActual.uid), { [`progresoCursos.${estudianteCursoIdActual}`]: dato }).catch(() => {});
+    } catch (err) { /* el progreso es de ayuda; si falla no interrumpe el estudio */ }
+  }
   let estudianteCursoIdActual = null;
   let tiempoAcumuladoBaseSegundos = 0;
   let horasMinimasActual = 0;
@@ -2271,6 +2287,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       contenidoNavBar.style.display = 'none';
       return;
     }
+    guardarProgresoEstudiante(false);
 
     const item = contenidoFlat[contenidoIndex];
     const itemAnterior = contenidoIndex > 0 ? contenidoFlat[contenidoIndex - 1] : null;
@@ -2407,6 +2424,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenidoFinal.style.display = 'block';
     contenidoProgresoBarra.style.width = '100%';
     contenidoPosicion.textContent = `100% · ${contenidoFlat.length}/${contenidoFlat.length}`;
+    guardarProgresoEstudiante(true);
   }
 
   studentBeginBtn.addEventListener('click', async () => {
@@ -2416,6 +2434,11 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     try {
       contenidoFlat = await cargarContenidoDelCurso(estudianteCursoIdActual);
       contenidoIndex = 0;
+      if (progresoGuardadoActual && !progresoGuardadoActual.terminado && contenidoFlat.length > 0) {
+        const pos = contenidoFlat.findIndex(it => it.bloque && it.bloque.id === progresoGuardadoActual.bloqueId);
+        if (pos >= 0) contenidoIndex = pos;
+        else if (typeof progresoGuardadoActual.indice === 'number') contenidoIndex = Math.min(progresoGuardadoActual.indice, contenidoFlat.length - 1);
+      }
       studentContentPlaceholder.style.display = 'block';
       renderContenidoActual();
       // Se oculta toda la bienvenida (nombre del curso, mensaje, video y este botón)
@@ -4310,8 +4333,9 @@ Y así sucesivamente...
       studentContentPlaceholder.style.display = 'none';
       studentBeginBtn.style.display = 'inline-block';
       studentBeginBtn.disabled = false;
-      studentBeginBtn.textContent = 'Iniciar curso';
       estudianteCursoIdActual = cursoId;
+      progresoGuardadoActual = (datosUsuario.progresoCursos && datosUsuario.progresoCursos[cursoId]) || null;
+      studentBeginBtn.textContent = (progresoGuardadoActual && !progresoGuardadoActual.terminado) ? 'Continuar donde quedaste' : 'Iniciar curso';
       horasMinimasActual = curso.horasMinimas || 0;
       // Compatibilidad: si esta cuenta todavía tiene tiempo guardado de la época de un solo
       // curso (tiempoAcumuladoSegundos) y el curso coincide, se usa ese como punto de partida.
