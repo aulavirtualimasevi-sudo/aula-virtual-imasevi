@@ -346,6 +346,10 @@
   .est-bienvenida{ margin-bottom:18px; border:1px solid var(--line); border-radius:12px; background:#fff; }
   .est-bienvenida > summary{ padding:13px 15px; cursor:pointer; font-weight:700; font-size:14px; color:var(--ink); }
   .est-bienvenida-cuerpo{ padding:0 15px 15px; }
+  .insertor-bloque{ margin:2px 0; }
+  .insertor-bloque-btn{ width:100%; padding:5px 8px; border:1px dashed #b9c4d6; border-radius:6px; background:transparent; color:#6b7b95; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .insertor-bloque-btn:hover{ border-color:var(--amber); color:var(--ink); background:#fffaf0; }
+  .insertor-bloque-form{ padding:8px; background:#fffaf0; border:1px solid var(--amber); border-radius:8px; }
   .est-bienvenida-curso{ border-color:var(--amber); background:#fffaf0; }
   .est-ruta-card{ background:#fff; border:2px solid var(--ink); border-radius:14px; padding:16px 14px 8px; margin-bottom:18px; }
   .est-ruta-cab{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
@@ -635,7 +639,7 @@
           <button type="submit" class="primary" id="courseSubmitBtn">Crear curso</button>
         </form>
 
-        <div class="msg error" id="courseErrorMsg"></div>
+        <div class="msg error" id="courseErrorMsg" style="display:none;"></div>
 
         <div style="display:flex; flex-direction:column; gap:6px; margin:6px 0 18px 0; padding:12px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px;">
           <label for="courseSelectorDropdown" style="font-size:12.5px; font-weight:700; color:var(--ink-soft);">📂 Selecciona el curso en el que quieres trabajar</label>
@@ -2066,6 +2070,89 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     });
   }
 
+  // ---------- Insertar imagen / video / texto DEBAJO de un contenido ya hecho ----------
+  // Para cada bloque de la lista hay un botón "➕ Insertar aquí" que abre un mini formulario.
+  // El bloque nuevo queda justo después del bloque elegido (no al final) y los demás se
+  // reordenan solos. Sirve igual para Subtemas ('subtemaId'), Temas ('temaId') y Módulos ('moduloId').
+  async function insertarBloqueDespuesDe(campoPadre, padreId, lista, idx, tipo, contenido){
+    const nuevoRef = doc(collection(db, 'bloques'));
+    const lote = writeBatch(db);
+    const nuevaLista = [...lista.slice(0, idx + 1), { __nuevo: true }, ...lista.slice(idx + 1)];
+    nuevaLista.forEach((b, i) => {
+      if (b.__nuevo) {
+        lote.set(nuevoRef, { [campoPadre]: padreId, tipo, contenido, orden: i, creado: serverTimestamp() });
+      } else if ((b.orden ?? 0) !== i) {
+        lote.update(doc(db, 'bloques', b.id), { orden: i });
+      }
+    });
+    await lote.commit();
+  }
+
+  function crearInsertorDeBloque({ campoPadre, padreId, lista, idx }){
+    const cont = document.createElement('div');
+    cont.className = 'insertor-bloque';
+    const boton = document.createElement('button');
+    boton.type = 'button';
+    boton.className = 'insertor-bloque-btn';
+    boton.textContent = '➕ Insertar imagen, video o texto debajo de este contenido';
+    const form = document.createElement('div');
+    form.className = 'insertor-bloque-form';
+    form.style.display = 'none';
+    form.innerHTML = `
+      <select class="ins-tipo" style="width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; margin-bottom:6px;">
+        <option value="imagen">🖼️ Imagen</option>
+        <option value="video">🎬 Video (enlace de YouTube o Google Drive)</option>
+        <option value="texto">📄 Texto</option>
+      </select>
+      <input type="file" class="ins-archivo" accept="image/*" style="width:100%; font-size:12px; margin-bottom:6px;">
+      <input type="text" class="ins-video" placeholder="Pega aquí el enlace de YouTube o Google Drive" style="display:none; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; margin-bottom:6px;">
+      <textarea class="ins-texto" rows="3" placeholder="Escribe el texto..." style="display:none; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:'Inter', sans-serif; resize:vertical; margin-bottom:6px;"></textarea>
+      <p class="ins-estado" style="display:none; font-size:11px; color:var(--teal); margin:0 0 6px;"></p>
+      <button type="button" class="ins-guardar" style="padding:6px 10px; border:none; border-radius:6px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:600; cursor:pointer; margin-right:6px;">Insertar aquí</button>
+      <button type="button" class="ins-cancelar" style="padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink-soft); font-size:11.5px; cursor:pointer;">Cancelar</button>
+    `;
+    const tipoSel = form.querySelector('.ins-tipo');
+    const archivo = form.querySelector('.ins-archivo');
+    const video = form.querySelector('.ins-video');
+    const texto = form.querySelector('.ins-texto');
+    const estado = form.querySelector('.ins-estado');
+    const guardar = form.querySelector('.ins-guardar');
+    tipoSel.addEventListener('change', () => {
+      archivo.style.display = tipoSel.value === 'imagen' ? 'block' : 'none';
+      video.style.display = tipoSel.value === 'video' ? 'block' : 'none';
+      texto.style.display = tipoSel.value === 'texto' ? 'block' : 'none';
+    });
+    boton.addEventListener('click', () => { form.style.display = 'block'; boton.style.display = 'none'; });
+    form.querySelector('.ins-cancelar').addEventListener('click', () => { form.style.display = 'none'; boton.style.display = 'block'; });
+    guardar.addEventListener('click', async () => {
+      const tipo = tipoSel.value;
+      let contenido = '';
+      guardar.disabled = true;
+      try {
+        if (tipo === 'imagen') {
+          if (!archivo.files[0]) { alert('Selecciona una imagen primero.'); guardar.disabled = false; return; }
+          estado.style.display = 'block'; estado.textContent = 'Subiendo imagen...';
+          contenido = await subirImagenACloudinary(archivo.files[0]);
+        } else if (tipo === 'video') {
+          contenido = video.value.trim();
+          if (!contenido) { alert('Pega el enlace del video primero.'); guardar.disabled = false; return; }
+        } else {
+          contenido = texto.value.trim();
+          if (!contenido) { alert('Escribe el texto primero.'); guardar.disabled = false; return; }
+        }
+        await insertarBloqueDespuesDe(campoPadre, padreId, lista, idx, tipo, contenido);
+      } catch (err) {
+        estado.style.display = 'block';
+        estado.style.color = 'var(--danger)';
+        estado.textContent = 'No se pudo insertar. Revisa tu conexión e intenta de nuevo.';
+        guardar.disabled = false;
+      }
+    });
+    cont.appendChild(boton);
+    cont.appendChild(form);
+    return cont;
+  }
+
   // Recuerda, por cada Subtema, qué bloque está siendo editado en este momento (si hay
   // alguno), para que un refresco en tiempo real de Firestore no borre la edición en curso
   // de nadie más que el último bloque agregado (ese era el error reportado).
@@ -2246,6 +2333,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         pintarVista();
       }
       ul.appendChild(li);
+      const liIns = document.createElement('li');
+      liIns.style.cssText = 'list-style:none;';
+      liIns.appendChild(crearInsertorDeBloque({ campoPadre: 'subtemaId', padreId: subtemaId, lista, idx }));
+      ul.appendChild(liIns);
     });
   }
 
@@ -2322,10 +2413,16 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         contenidoWrap.style.flex = '1';
         const etiqueta = document.createElement('div');
         etiqueta.style.cssText = 'font-size:10.5px; font-weight:700; color:var(--ink-soft); margin-bottom:3px;';
-        etiqueta.textContent = `${idx + 1}. 📄 Texto`;
-        const span = document.createElement('span');
-        span.style.cssText = 'white-space:pre-wrap; text-align:justify; display:block;';
-        span.textContent = bloque.contenido;
+        etiqueta.textContent = `${idx + 1}. ${bloque.tipo === 'video' ? '🎬 Video' : bloque.tipo === 'imagen' ? '🖼️ Imagen' : '📄 Texto'}`;
+        const span = document.createElement('div');
+        if (bloque.tipo === 'imagen') {
+          span.innerHTML = `<img src="${escaparHtmlImp(bloque.contenido)}" style="max-width:100%; max-height:160px; border-radius:6px; display:block;">`;
+        } else if (bloque.tipo === 'video') {
+          span.innerHTML = construirVisorDeVideo(bloque.contenido) || '<span style="color:var(--danger);">No se pudo reconocer este enlace. Revísalo.</span>';
+        } else {
+          span.style.cssText = 'white-space:pre-wrap; text-align:justify; display:block;';
+          span.textContent = bloque.contenido;
+        }
         contenidoWrap.appendChild(etiqueta);
         contenidoWrap.appendChild(span);
 
@@ -2334,13 +2431,14 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
         editBtn.textContent = '✏️';
         editBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:12px; padding:2px 4px;';
         editBtn.addEventListener('click', () => { bloqueNivelEnEdicion[id] = bloque.id; pintarEdicion(); });
+        if (bloque.tipo === 'imagen') editBtn.style.display = 'none';
 
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.textContent = '🗑️';
         deleteBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:12px; padding:2px 4px;';
         deleteBtn.addEventListener('click', async () => {
-          const confirmado = confirm('¿Eliminar este bloque de texto? Esta acción no se puede deshacer.');
+          const confirmado = confirm('¿Eliminar este bloque? Esta acción no se puede deshacer.');
           if (!confirmado) return;
           try { await deleteDoc(doc(db, 'bloques', bloque.id)); }
           catch (err) { alert('No se pudo eliminar el bloque. Intenta de nuevo.'); }
@@ -2390,6 +2488,10 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
       if (bloqueNivelEnEdicion[id] === bloque.id) pintarEdicion(); else pintarVista();
       ul.appendChild(li);
+      const liIns = document.createElement('li');
+      liIns.style.cssText = 'list-style:none;';
+      liIns.appendChild(crearInsertorDeBloque({ campoPadre: lista[0] && lista[0].temaId ? 'temaId' : 'moduloId', padreId: id, lista, idx }));
+      ul.appendChild(liIns);
     });
   }
 
@@ -2462,10 +2564,20 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     const modulos = ordenarPorCampoOrden(modulosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
     for (const modulo of modulos) {
+      // Información propia del Módulo (texto, imagen o video): va primero, antes de sus temas
+      const bloquesModSnap = await getDocs(query(collection(db, 'bloques'), where('moduloId', '==', modulo.id)));
+      for (const bloque of ordenarPorCampoOrden(bloquesModSnap.docs.map(d => ({ id: d.id, ...d.data() })))) {
+        flat.push({ moduloId: modulo.id, temaId: `intro_${modulo.id}`, subtemaId: `intro_modulo_${modulo.id}`, cursoId, moduloNombre: modulo.nombre, temaNombre: 'Introducción', subtemaNombre: 'Introducción del módulo', bloque });
+      }
       const temasSnap = await getDocs(query(collection(db, 'temas'), where('moduloId', '==', modulo.id)));
       const temas = ordenarPorCampoOrden(temasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       for (const tema of temas) {
+        // Información propia del Tema: va inmediatamente después del nombre del tema
+        const bloquesTemaSnap = await getDocs(query(collection(db, 'bloques'), where('temaId', '==', tema.id)));
+        for (const bloque of ordenarPorCampoOrden(bloquesTemaSnap.docs.map(d => ({ id: d.id, ...d.data() })))) {
+          flat.push({ moduloId: modulo.id, temaId: tema.id, subtemaId: `intro_tema_${tema.id}`, cursoId, moduloNombre: modulo.nombre, temaNombre: tema.nombre, subtemaNombre: 'Introducción del tema', bloque });
+        }
         const subtemasSnap = await getDocs(query(collection(db, 'subtemas'), where('temaId', '==', tema.id)));
         const subtemas = ordenarPorCampoOrden(subtemasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
@@ -2774,8 +2886,8 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
       studentPctTexto.textContent = `${pct}%`;
       studentPctBarra.style.width = `${pct}%`;
       const estr = construirEstructuraRuta();
-      const nTemas = estr.reduce((a, m) => a + m.temas.length, 0);
-      const nLecc = estr.reduce((a, m) => a + m.temas.reduce((b, t) => b + t.subtemas.length, 0), 0);
+      const nTemas = estr.reduce((a, m) => a + m.temas.filter(t => !String(t.id).startsWith('intro_')).length, 0);
+      const nLecc = estr.reduce((a, m) => a + m.temas.reduce((b, t) => b + t.subtemas.filter(x => !String(x.id).startsWith('intro_')).length, 0), 0);
       studentRutaResumen.innerHTML = nLecc ? `<span>📚 ${estr.length} módulo${estr.length === 1 ? '' : 's'}</span><span>🧩 ${nTemas} tema${nTemas === 1 ? '' : 's'}</span><span>📝 ${nLecc} lecci${nLecc === 1 ? 'ón' : 'ones'}</span>` : '';
       pintarRutaCurso(studentRuta, (idx) => {
         indiceInicioForzado = idx;
