@@ -333,6 +333,55 @@
   .admin-tab-btn, .curso-tab-btn { padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; }
   .admin-tab-btn.activa, .curso-tab-btn.activa { background:var(--ink); color:#fff; border-color:var(--ink); }
   .plegar-btn { align-self:flex-start; padding:7px 12px; border:1px dashed var(--teal); border-radius:8px; background:#fff; color:var(--teal); font-size:12px; font-weight:700; cursor:pointer; margin-bottom:8px; font-family:inherit; }
+  /* ---------- Vista del Estudiante ---------- */
+  #studentSection{ text-align:left; }
+  .est-hero{ background:var(--ink); color:#fff; border-radius:14px; padding:22px 20px; margin-bottom:14px; }
+  .est-hero h3{ font-family:'Source Serif 4', serif; font-size:23px; line-height:1.25; color:#fff; margin:0 0 16px; }
+  .est-hero-fila{ margin-bottom:12px; font-size:13px; color:rgba(255,255,255,.88); }
+  .est-hero-fila b{ color:#fff; }
+  .est-barra{ height:8px; background:rgba(255,255,255,.2); border-radius:999px; overflow:hidden; margin-top:6px; }
+  .est-barra > div{ height:100%; background:var(--amber); border-radius:999px; transition:width .4s ease; }
+  .est-cta{ margin-top:6px; padding:13px 24px; border:none; border-radius:10px; background:var(--amber); color:#fff; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .est-cta:disabled{ opacity:.65; cursor:default; }
+  .est-bienvenida{ margin-bottom:18px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+  .est-bienvenida > summary{ padding:13px 15px; cursor:pointer; font-weight:700; font-size:14px; color:var(--ink); }
+  .est-bienvenida-cuerpo{ padding:0 15px 15px; }
+  .est-titulo-seccion{ font-family:'Source Serif 4', serif; font-size:18px; color:var(--ink); margin:0 0 4px; }
+  .est-ayuda{ font-size:12.5px; color:#5b6b87; margin:0 0 12px; }
+  .ruta-modulo{ border:1px solid var(--line); border-radius:12px; background:#fff; margin-bottom:10px; overflow:hidden; }
+  .ruta-modulo > summary{ list-style:none; display:flex; align-items:center; gap:12px; padding:13px 14px; cursor:pointer; }
+  .ruta-modulo > summary::-webkit-details-marker{ display:none; }
+  .ruta-num{ flex:0 0 32px; height:32px; border-radius:50%; background:var(--paper); color:var(--ink); font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .ruta-modulo.completo .ruta-num{ background:var(--amber); color:#fff; }
+  .ruta-modulo.actual .ruta-num{ background:var(--ink); color:#fff; }
+  .ruta-modulo-nombre{ font-weight:700; font-size:14.5px; color:var(--ink); line-height:1.3; }
+  .ruta-modulo-meta{ font-size:12px; color:#5b6b87; margin-top:2px; }
+  .ruta-flecha{ margin-left:auto; color:#8493ab; transition:transform .2s; }
+  .ruta-modulo[open] .ruta-flecha{ transform:rotate(180deg); }
+  .ruta-cuerpo{ padding:2px 14px 14px 58px; }
+  .ruta-tema{ font-weight:700; font-size:13px; color:var(--ink-soft); margin:10px 0 4px; }
+  .ruta-fila{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:8px 10px; border:1px solid transparent; border-radius:8px; background:transparent; font-family:inherit; font-size:13.5px; color:var(--ink); cursor:pointer; }
+  .ruta-fila:hover{ background:var(--paper); }
+  .ruta-fila .ruta-ico{ flex:0 0 22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; border:2px solid var(--line); color:transparent; }
+  .ruta-fila.completo .ruta-ico{ background:var(--amber); border-color:var(--amber); color:#fff; }
+  .ruta-fila.actual{ background:var(--paper); border-color:var(--amber); font-weight:700; }
+  .ruta-fila.actual .ruta-ico{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  .ruta-fila.bloqueado{ color:#9aa7b8; cursor:default; }
+  .ruta-fila.bloqueado:hover{ background:transparent; }
+  .ruta-fila.bloqueado .ruta-ico{ color:#9aa7b8; border-style:dashed; }
+  .ruta-chip{ display:inline-block; margin-left:6px; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:700; background:var(--paper); color:var(--ink-soft); }
+  .ruta-chip.ok{ background:#e3f3df; color:#2b6d1c; }
+  .ruta-chip.mal{ background:#fbe6e3; color:var(--danger); }
+  .ruta-final{ display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px dashed var(--ink-soft); border-radius:12px; background:#fff; font-weight:700; font-size:14px; color:var(--ink); }
+  .est-topbar{ position:sticky; top:0; z-index:20; background:#fff; margin:0 -4px 14px; padding:10px 4px 8px; border-bottom:1px solid var(--line); }
+  .est-topbar-fila{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+  .est-ruta-btn{ padding:8px 14px; border:1px solid var(--ink); border-radius:999px; background:#fff; color:var(--ink); font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .est-ruta-btn:hover{ background:var(--ink); color:#fff; }
+  #contenidoNavBar{ position:sticky; bottom:0; z-index:15; background:#fff; padding:10px 0; border-top:1px solid var(--line); margin-top:14px !important; }
+  .ruta-overlay{ position:fixed; inset:0; background:rgba(10,20,15,.78); z-index:9998; overflow-y:auto; display:flex; justify-content:center; padding:20px 12px; }
+  .ruta-hoja{ background:var(--paper-card); border-radius:16px; width:100%; max-width:680px; height:fit-content; padding:18px 16px 22px; text-align:left; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+  .ruta-hoja-cab{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; }
+  @media (max-width:520px){ .ruta-cuerpo{ padding-left:14px; } .est-hero h3{ font-size:20px; } }
 </style>
 </head>
 <body>
@@ -454,22 +503,40 @@
         <div id="studentCourseSwitcherList" style="display:flex; flex-direction:column; gap:6px;"></div>
       </div>
       <div id="studentWelcomeBlock">
-        <h3 id="studentCourseName">Curso</h3>
-        <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify;"></p>
-        <div id="studentVideoContainer"></div>
-        <div id="studentTiempoAcumulado" style="display:none; margin-top:12px; padding:9px 12px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12.5px; color:var(--ink-soft);"></div>
-        <button type="button" class="primary" id="studentBeginBtn" style="margin-top:14px;">Iniciar curso</button>
+        <div class="est-hero">
+          <h3 id="studentCourseName">Curso</h3>
+          <div class="est-hero-fila" id="studentAvanceFila" style="display:none;">
+            <div>Avance del curso: <b id="studentPctTexto">0%</b></div>
+            <div class="est-barra"><div id="studentPctBarra" style="width:0%;"></div></div>
+          </div>
+          <div class="est-hero-fila" id="studentTiempoAcumulado" style="display:none;"></div>
+          <button type="button" class="est-cta" id="studentBeginBtn">Iniciar curso</button>
+        </div>
+
+        <details class="est-bienvenida" id="studentBienvenidaDetalle">
+          <summary>👋 Mensaje de bienvenida</summary>
+          <div class="est-bienvenida-cuerpo">
+            <p id="studentWelcomeMsg" style="font-size:13.5px; color:#5b6b87; white-space:pre-wrap; text-align:justify; line-height:1.6;"></p>
+            <div id="studentVideoContainer"></div>
+          </div>
+        </details>
+
+        <h4 class="est-titulo-seccion">Ruta del curso</h4>
+        <p class="est-ayuda">Aquí ves por dónde vas. Toca una lección que ya alcanzaste para volver a ella.</p>
+        <div id="studentRuta"><p class="est-ayuda">Cargando la ruta…</p></div>
       </div>
       <div id="studentContentPlaceholder" style="display:none; margin-top:16px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">
-          <span style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Progreso del curso</span>
-          <span id="contenidoTiempoActual" style="font-size:11.5px; color:#8493ab; white-space:nowrap;">⏱️ 0h 00m</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-          <div style="flex:1; height:6px; background:var(--line); border-radius:999px; overflow:hidden;">
-            <div id="contenidoProgresoBarra" style="height:100%; width:0%; background:var(--amber); border-radius:999px; transition:width .25s ease;"></div>
+        <div class="est-topbar">
+          <div class="est-topbar-fila">
+            <button type="button" class="est-ruta-btn" id="contenidoRutaBtn">📋 Ruta del curso</button>
+            <span id="contenidoTiempoActual" style="font-size:12.5px; color:#5b6b87; white-space:nowrap;">⏱️ 0h 00m</span>
           </div>
-          <span id="contenidoPosicion" style="font-size:11.5px; color:#8493ab; white-space:nowrap;"></span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="flex:1; height:8px; background:var(--line); border-radius:999px; overflow:hidden;">
+              <div id="contenidoProgresoBarra" style="height:100%; width:0%; background:var(--amber); border-radius:999px; transition:width .25s ease;"></div>
+            </div>
+            <span id="contenidoPosicion" style="font-size:12px; font-weight:600; color:#5b6b87; white-space:nowrap;"></span>
+          </div>
         </div>
 
         <div id="contenidoViewer">
@@ -489,6 +556,7 @@
           <div style="font-size:32px; margin-bottom:8px;">🎉</div>
           <h3 style="font-family:'Source Serif 4', serif; margin:0 0 8px; color:var(--ink);">¡Completaste el recorrido!</h3>
           <p style="font-size:13.5px; color:#5b6b87; margin:0 0 18px;">Revisaste todo el contenido disponible de este curso.</p>
+          <button type="button" id="contenidoRutaFinalBtn" style="padding:10px 18px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; cursor:pointer; margin-right:8px;">📋 Ver ruta del curso</button>
           <button type="button" id="contenidoVolverInicioBtn" style="padding:10px 18px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;">Volver al principio</button>
         </div>
 
@@ -762,19 +830,33 @@
       if (!identidadActual || identidadActual.rolCrudo !== 'estudiante' || !identidadActual.uid) return;
       if (!estudianteCursoIdActual || contenidoFlat.length === 0) return;
       const item = contenidoFlat[Math.min(contenidoIndex, contenidoFlat.length - 1)];
+      const maxPrevio = progresoGuardadoActual
+        ? (typeof progresoGuardadoActual.maxIndice === 'number' ? progresoGuardadoActual.maxIndice : (progresoGuardadoActual.indice || 0))
+        : 0;
+      // maxIndice = hasta dónde ha llegado (al terminar el curso queda una posición más allá del final,
+      // para que toda la ruta se vea completada).
       const dato = terminado
-        ? { terminado: true, actualizado: Date.now() }
-        : { terminado: false, indice: contenidoIndex, bloqueId: (item && item.bloque && item.bloque.id) || '', actualizado: Date.now() };
+        ? { terminado: true, maxIndice: contenidoFlat.length, actualizado: Date.now() }
+        : { terminado: false, indice: contenidoIndex, maxIndice: Math.max(maxPrevio, contenidoIndex), bloqueId: (item && item.bloque && item.bloque.id) || '', actualizado: Date.now() };
       progresoGuardadoActual = dato;
       updateDoc(doc(db, 'usuarios', identidadActual.uid), { [`progresoCursos.${estudianteCursoIdActual}`]: dato }).catch(() => {});
     } catch (err) { /* el progreso es de ayuda; si falla no interrumpe el estudio */ }
   }
   let estudianteCursoIdActual = null;
+  let contenidoFlatCursoId = null;
+  let indiceInicioForzado = null;
+  let resultadosExamenesEstudiante = {};
+  let rutaOverlayActual = null;
   let tiempoAcumuladoBaseSegundos = 0;
   let horasMinimasActual = 0;
   let segundosMostrados = 0;
   let intervaloRelojVisible = null;
   const studentTiempoAcumulado = document.getElementById('studentTiempoAcumulado');
+  const studentAvanceFila = document.getElementById('studentAvanceFila');
+  const studentPctTexto = document.getElementById('studentPctTexto');
+  const studentPctBarra = document.getElementById('studentPctBarra');
+  const studentBienvenidaDetalle = document.getElementById('studentBienvenidaDetalle');
+  const studentRuta = document.getElementById('studentRuta');
   const contenidoTiempoActual = document.getElementById('contenidoTiempoActual');
 
   function formatearHorasMinutos(segundos){
@@ -2385,7 +2467,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     // Barra de progreso y contador
     const porcentaje = Math.round(((contenidoIndex + 1) / contenidoFlat.length) * 100);
     contenidoProgresoBarra.style.width = `${porcentaje}%`;
-    contenidoPosicion.textContent = `${porcentaje}% · ${contenidoIndex + 1}/${contenidoFlat.length}`;
+    contenidoPosicion.textContent = `${porcentaje}% · parte ${contenidoIndex + 1} de ${contenidoFlat.length}`;
 
     // Encabezado de sección: solo se muestra al entrar a un Subtema nuevo, para dar sentido de avance
     if (esInicioDeSubtema) {
@@ -2501,6 +2583,163 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     });
   }
 
+  // ---------- Ruta del curso (mapa de módulos, temas y subtemas con su estado) ----------
+
+  function construirEstructuraRuta(){
+    const modulos = [];
+    contenidoFlat.forEach((item, idx) => {
+      let mo = modulos.find(m => m.id === item.moduloId);
+      if (!mo) { mo = { id: item.moduloId, nombre: item.moduloNombre, temas: [] }; modulos.push(mo); }
+      let te = mo.temas.find(t => t.id === item.temaId);
+      if (!te) { te = { id: item.temaId, nombre: item.temaNombre, subtemas: [] }; mo.temas.push(te); }
+      let su = te.subtemas.find(x => x.id === item.subtemaId);
+      if (!su) { su = { id: item.subtemaId, nombre: item.subtemaNombre, first: idx, last: idx }; te.subtemas.push(su); }
+      su.last = idx;
+    });
+    return modulos;
+  }
+
+  function estadoProgresoEstudiante(){
+    const pg = progresoGuardadoActual;
+    if (!pg) return { terminado: false, maxAlcanzado: -1, actual: -1 };
+    const terminado = !!pg.terminado;
+    const max = typeof pg.maxIndice === 'number' ? pg.maxIndice : (typeof pg.indice === 'number' ? pg.indice : -1);
+    return { terminado, maxAlcanzado: terminado ? contenidoFlat.length : max, actual: terminado ? -1 : (typeof pg.indice === 'number' ? pg.indice : -1) };
+  }
+
+  function porcentajeAvanceCurso(){
+    if (contenidoFlat.length === 0) return 0;
+    const est = estadoProgresoEstudiante();
+    if (est.terminado) return 100;
+    if (est.maxAlcanzado < 0) return 0;
+    return Math.min(100, Math.round(((est.maxAlcanzado + 1) / contenidoFlat.length) * 100));
+  }
+
+  async function cargarResultadosExamenesEstudiante(uid, cursoId){
+    resultadosExamenesEstudiante = {};
+    try {
+      const snap = await getDocs(query(collection(db, 'examenesResultados'), where('uid', '==', uid), where('cursoId', '==', cursoId)));
+      snap.docs.forEach(d => {
+        const r = d.data();
+        resultadosExamenesEstudiante[`${r.nivel}_${r.nivelId}`] = r;
+      });
+    } catch (err) { /* sin resultados no se muestra el puntaje, pero la ruta funciona igual */ }
+  }
+
+  // Dibuja la ruta dentro de "contenedor". Al tocar una lección ya alcanzada llama a onIr(indice).
+  function pintarRutaCurso(contenedor, onIr, indiceActualEnVivo){
+    const modulos = construirEstructuraRuta();
+    if (modulos.length === 0) {
+      contenedor.innerHTML = '<p class="est-ayuda">Este curso todavía no tiene contenido publicado. Vuelve a revisar más adelante.</p>';
+      return;
+    }
+    const est = estadoProgresoEstudiante();
+    const actualIdx = typeof indiceActualEnVivo === 'number' ? indiceActualEnVivo : est.actual;
+    const maxIdx = Math.max(est.maxAlcanzado, actualIdx);
+
+    let moduloAbierto = modulos.findIndex(m => m.temas.some(t => t.subtemas.some(su => actualIdx >= su.first && actualIdx <= su.last)));
+    if (moduloAbierto < 0) {
+      moduloAbierto = modulos.findIndex(m => m.temas.some(t => t.subtemas.some(su => !(est.terminado || maxIdx > su.last))));
+    }
+    if (moduloAbierto < 0) moduloAbierto = 0;
+
+    const html = modulos.map((mo, mi) => {
+      const subs = mo.temas.flatMap(t => t.subtemas);
+      const hechos = subs.filter(su => est.terminado || maxIdx > su.last).length;
+      const completoMod = hechos === subs.length;
+      const actualMod = subs.some(su => actualIdx >= su.first && actualIdx <= su.last);
+      const res = resultadosExamenesEstudiante[`modulo_${mo.id}`];
+      const chip = res ? `<span class="ruta-chip ${res.aprobado ? 'ok' : 'mal'}">Examen: ${res.puntaje}/100 ${res.aprobado ? '✓' : '✗'}</span>` : '';
+      const temasHtml = mo.temas.map(te => {
+        const filas = te.subtemas.map(su => {
+          const completo = est.terminado || maxIdx > su.last;
+          const actual = actualIdx >= su.first && actualIdx <= su.last;
+          const alcanzable = est.terminado || su.first <= Math.max(maxIdx, 0);
+          const clase = actual ? 'actual' : (completo ? 'completo' : (alcanzable ? 'pendiente' : 'bloqueado'));
+          const icono = actual ? '▶' : (completo ? '✓' : (alcanzable ? '' : '🔒'));
+          return `<button type="button" class="ruta-fila ${clase}" ${alcanzable ? `data-ir="${su.first}"` : 'disabled'}><span class="ruta-ico">${icono}</span><span>${escaparHtmlImp(su.nombre)}</span></button>`;
+        }).join('');
+        return `<div class="ruta-tema">${escaparHtmlImp(te.nombre)}</div>${filas}`;
+      }).join('');
+      return `
+        <details class="ruta-modulo ${completoMod ? 'completo' : ''} ${actualMod ? 'actual' : ''}" ${mi === moduloAbierto ? 'open' : ''}>
+          <summary>
+            <span class="ruta-num">${completoMod ? '✓' : mi + 1}</span>
+            <span>
+              <div class="ruta-modulo-nombre">${escaparHtmlImp(mo.nombre)}</div>
+              <div class="ruta-modulo-meta">${hechos} de ${subs.length} lecciones${chip}</div>
+            </span>
+            <span class="ruta-flecha">▾</span>
+          </summary>
+          <div class="ruta-cuerpo">${temasHtml}</div>
+        </details>`;
+    }).join('');
+
+    const resFinal = resultadosExamenesEstudiante[`curso_${estudianteCursoIdActual}`];
+    const finalHtml = `<div class="ruta-final"><span>🏁</span><span>Examen final del curso${resFinal ? `<span class="ruta-chip ${resFinal.aprobado ? 'ok' : 'mal'}">${resFinal.puntaje}/100 ${resFinal.aprobado ? '✓' : '✗'}</span>` : '<span class="ruta-chip">Al terminar todas las lecciones</span>'}</span></div>`;
+
+    contenedor.innerHTML = html + finalHtml;
+    contenedor.querySelectorAll('[data-ir]').forEach(b => {
+      b.addEventListener('click', () => onIr(parseInt(b.dataset.ir, 10)));
+    });
+  }
+
+  function cerrarRutaOverlay(){
+    if (rutaOverlayActual) { rutaOverlayActual.remove(); rutaOverlayActual = null; }
+  }
+
+  function abrirRutaOverlay(){
+    cerrarRutaOverlay();
+    const overlay = document.createElement('div');
+    overlay.className = 'ruta-overlay';
+    overlay.innerHTML = `
+      <div class="ruta-hoja">
+        <div class="ruta-hoja-cab">
+          <h4 class="est-titulo-seccion" style="margin:0;">Ruta del curso</h4>
+          <button type="button" class="ruta-cerrar" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;">✕ Cerrar</button>
+        </div>
+        <div class="ruta-contenedor"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    rutaOverlayActual = overlay;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarRutaOverlay(); });
+    overlay.querySelector('.ruta-cerrar').addEventListener('click', cerrarRutaOverlay);
+    pintarRutaCurso(overlay.querySelector('.ruta-contenedor'), (idx) => {
+      cerrarRutaOverlay();
+      contenidoIndex = idx;
+      renderContenidoActual();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, contenidoFlat.length && contenidoViewer.style.display !== 'none' ? contenidoIndex : undefined);
+  }
+
+  // Pantalla de inicio del curso: avance, tiempo y ruta (se llama al abrir un curso)
+  async function pintarInicioCursoEstudiante(uid, cursoId){
+    try {
+      if (contenidoFlatCursoId !== cursoId) {
+        contenidoFlat = await cargarContenidoDelCurso(cursoId);
+        contenidoFlatCursoId = cursoId;
+      }
+      await cargarResultadosExamenesEstudiante(uid, cursoId);
+      if (estudianteCursoIdActual !== cursoId) return; // el estudiante ya cambió de curso
+      const pct = porcentajeAvanceCurso();
+      studentAvanceFila.style.display = contenidoFlat.length ? 'block' : 'none';
+      studentPctTexto.textContent = `${pct}%`;
+      studentPctBarra.style.width = `${pct}%`;
+      pintarRutaCurso(studentRuta, (idx) => {
+        indiceInicioForzado = idx;
+        studentBeginBtn.click();
+      });
+      // La bienvenida se muestra abierta solo la primera vez; después queda plegada.
+      studentBienvenidaDetalle.open = !progresoGuardadoActual;
+    } catch (err) {
+      studentRuta.innerHTML = '<p class="est-ayuda">No se pudo cargar la ruta del curso. Aun así puedes iniciar el curso con el botón de arriba.</p>';
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#contenidoRutaBtn') || e.target.closest('#contenidoRutaFinalBtn')) abrirRutaOverlay();
+  });
+
   function mostrarPantallaFinal(){
     detenerConteoDePermanencia();
     detenerRelojVisible();
@@ -2512,7 +2751,7 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     contenidoNavBar.style.display = 'none';
     contenidoFinal.style.display = 'block';
     contenidoProgresoBarra.style.width = '100%';
-    contenidoPosicion.textContent = `100% · ${contenidoFlat.length}/${contenidoFlat.length}`;
+    contenidoPosicion.textContent = `100% · parte ${contenidoFlat.length} de ${contenidoFlat.length}`;
     guardarProgresoEstudiante(true);
   }
 
@@ -2521,13 +2760,20 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
     studentBeginBtn.disabled = true;
     studentBeginBtn.textContent = 'Cargando...';
     try {
-      contenidoFlat = await cargarContenidoDelCurso(estudianteCursoIdActual);
+      if (contenidoFlatCursoId !== estudianteCursoIdActual || contenidoFlat.length === 0) {
+        contenidoFlat = await cargarContenidoDelCurso(estudianteCursoIdActual);
+        contenidoFlatCursoId = estudianteCursoIdActual;
+      }
       contenidoIndex = 0;
       if (progresoGuardadoActual && !progresoGuardadoActual.terminado && contenidoFlat.length > 0) {
         const pos = contenidoFlat.findIndex(it => it.bloque && it.bloque.id === progresoGuardadoActual.bloqueId);
         if (pos >= 0) contenidoIndex = pos;
         else if (typeof progresoGuardadoActual.indice === 'number') contenidoIndex = Math.min(progresoGuardadoActual.indice, contenidoFlat.length - 1);
       }
+      if (indiceInicioForzado !== null && indiceInicioForzado >= 0 && indiceInicioForzado < contenidoFlat.length) {
+        contenidoIndex = indiceInicioForzado;
+      }
+      indiceInicioForzado = null;
       studentContentPlaceholder.style.display = 'block';
       renderContenidoActual();
       // Se oculta toda la bienvenida (nombre del curso, mensaje, video y este botón)
@@ -4779,8 +5025,12 @@ Contenido del subtema.
       // curso (tiempoAcumuladoSegundos) y el curso coincide, se usa ese como punto de partida.
       const tiempoLegado = datosUsuario.cursoId === cursoId ? (datosUsuario.tiempoAcumuladoSegundos || 0) : 0;
       tiempoAcumuladoBaseSegundos = (datosUsuario.tiempoPorCurso && datosUsuario.tiempoPorCurso[cursoId]) || tiempoLegado;
+      const pctTiempo = horasMinimasActual > 0 ? Math.min(100, Math.round((tiempoAcumuladoBaseSegundos / (horasMinimasActual * 3600)) * 100)) : 0;
       studentTiempoAcumulado.style.display = 'block';
-      studentTiempoAcumulado.textContent = `⏱️ Tiempo acumulado en este curso: ${formatearHorasMinutos(tiempoAcumuladoBaseSegundos)} (mínimo requerido: ${horasMinimasActual} h)`;
+      studentTiempoAcumulado.innerHTML = `<div>⏱️ Tiempo en el curso: <b>${formatearHorasMinutos(tiempoAcumuladoBaseSegundos)}</b> de ${horasMinimasActual} h mínimas</div><div class="est-barra"><div style="width:${pctTiempo}%;"></div></div>`;
+      studentAvanceFila.style.display = 'none';
+      studentRuta.innerHTML = '<p class="est-ayuda">Cargando la ruta…</p>';
+      pintarInicioCursoEstudiante(uid, cursoId);
     } catch (err) {
       panelSubtitle.style.display = 'block';
       panelSubtitle.textContent = 'Este es tu panel de Estudiante.';
