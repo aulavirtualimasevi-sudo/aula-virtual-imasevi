@@ -349,6 +349,31 @@
   .est-bienvenida{ margin-bottom:18px; border:1px solid var(--line); border-radius:12px; background:#fff; }
   .est-bienvenida > summary{ padding:13px 15px; cursor:pointer; font-weight:700; font-size:14px; color:var(--ink); }
   .est-bienvenida-cuerpo{ padding:0 15px 15px; }
+  .est-badge-msg{ display:inline-block; margin-left:8px; padding:1px 8px; border-radius:999px; background:var(--danger); color:#fff; font-size:11.5px; font-weight:700; }
+  .msg-hilo{ display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; margin-bottom:10px; padding:2px; }
+  .msg-burbuja{ max-width:86%; padding:7px 10px; border-radius:12px; font-size:13px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word; }
+  .msg-burbuja small{ display:block; font-size:10.5px; opacity:.7; margin-top:2px; }
+  .msg-burbuja.profesor{ align-self:flex-start; background:#e8f0ec; color:var(--ink); }
+  .msg-burbuja.estudiante{ align-self:flex-end; background:var(--ink); color:#fff; }
+  .toast-aviso{ position:fixed; right:14px; bottom:84px; z-index:9999; max-width:300px; padding:12px 14px; background:var(--ink); color:#fff; border-radius:12px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+  .seg-resumen{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-bottom:12px; }
+  .seg-card{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:9px 10px; }
+  .seg-card b{ display:block; font-size:19px; color:var(--ink); }
+  .seg-card span{ font-size:11px; color:#6b7b95; }
+  .seg-card.alerta b{ color:var(--danger); }
+  .seg-barra{ height:8px; background:var(--line); border-radius:999px; overflow:hidden; }
+  .seg-barra > div{ height:100%; background:var(--amber); border-radius:999px; }
+  .seg-est{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px; }
+  .seg-est.atencion{ border-left:4px solid var(--danger); }
+  .seg-chip{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; background:var(--paper); color:var(--ink-soft); margin-right:4px; }
+  .seg-chip.mal{ background:#fbe6e3; color:var(--danger); }
+  .seg-chip.ok{ background:#e3f3df; color:#2b6d1c; }
+  .seg-btn{ padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .seg-btn.prim{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .seg-detalle{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:12.5px; }
+  .seg-detalle h6{ margin:12px 0 5px; font-size:12.5px; color:var(--ink); }
+  .seg-tabla{ width:100%; border-collapse:collapse; font-size:12px; }
+  .seg-tabla td, .seg-tabla th{ padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; }
   .insertor-bloque{ margin:2px 0; }
   .insertor-bloque-btn{ width:100%; padding:5px 8px; border:1px dashed #b9c4d6; border-radius:6px; background:transparent; color:#6b7b95; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; }
   .insertor-bloque-btn:hover{ border-color:var(--amber); color:var(--ink); background:#fffaf0; }
@@ -545,6 +570,15 @@
           <div class="est-hero-fila" id="studentTiempoAcumulado" style="display:none;"></div>
           <div class="est-cta-fila"><button type="button" class="est-cta" id="studentBeginBtn">Iniciar curso</button><button type="button" class="est-cta est-cta-sec" id="studentRestartBtn" style="display:none;">↻ Iniciar de nuevo</button></div>
         </div>
+
+        <details class="est-bienvenida est-mensajes" id="studentMensajes" style="display:none;">
+          <summary>✉️ Mensajes con tu profesor <span class="est-badge-msg" id="studentMensajesBadge" style="display:none;"></span></summary>
+          <div class="est-bienvenida-cuerpo">
+            <div id="studentMensajesLista" class="msg-hilo"></div>
+            <textarea id="studentMensajeInput" rows="2" placeholder="Escribe tu mensaje o pregunta para tu profesor..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:'Inter', sans-serif; resize:vertical;"></textarea>
+            <button type="button" id="studentMensajeEnviarBtn" style="margin-top:6px; padding:8px 14px; border:none; border-radius:8px; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer;">Enviar mensaje</button>
+          </div>
+        </details>
 
         <section class="est-ruta-card">
           <div class="est-ruta-cab">
@@ -997,8 +1031,56 @@
     detenerConteoDePermanencia();
     detenerRelojVisible();
     try { sessionStorage.setItem('imasevi_cierre_por_inactividad', 'true'); } catch (err) {}
+    await cerrarRegistroSesion(ultimaActividadTs);
     await signOut(auth);
   }
+
+  // ---------- Registro de entradas y salidas del estudiante ----------
+  // Cada vez que un estudiante entra se guarda una "sesión" (inicio, último movimiento y
+  // salida). Así el profesor puede ver cuántas veces entra y cuánto tiempo se queda.
+  let sesionActual = null;
+  let intervaloSesion = null;
+
+  async function iniciarRegistroSesion(uid, nombre, cursosIds){
+    if (sesionActual && sesionActual.uid === uid) return;
+    const ref = doc(collection(db, 'sesiones'));
+    sesionActual = { id: ref.id, uid };
+    const ahora = Date.now();
+    try {
+      await setDoc(ref, { uid, nombre: nombre || '', cursosIds: cursosIds || [], inicio: ahora, ultimo: ahora, fin: null });
+      await updateDoc(doc(db, 'usuarios', uid), { totalAccesos: increment(1), ultimoAcceso: ahora, ultimaActividad: ahora });
+    } catch (err) { /* el registro es de ayuda; si falla no interrumpe al estudiante */ }
+    if (intervaloSesion) clearInterval(intervaloSesion);
+    intervaloSesion = setInterval(latidoSesion, 60000);
+  }
+
+  function latidoSesion(){
+    if (!sesionActual) return;
+    if (Date.now() - ultimaActividadTs > 5 * 60 * 1000) return; // pestaña abierta sin uso: no cuenta como "en línea"
+    const ahora = Date.now();
+    updateDoc(doc(db, 'sesiones', sesionActual.id), { ultimo: ahora }).catch(() => {});
+    updateDoc(doc(db, 'usuarios', sesionActual.uid), { ultimaActividad: ahora }).catch(() => {});
+  }
+
+  async function cerrarRegistroSesion(finTs){
+    if (!sesionActual) return;
+    const sesion = sesionActual;
+    sesionActual = null;
+    if (intervaloSesion) { clearInterval(intervaloSesion); intervaloSesion = null; }
+    const fin = finTs || Date.now();
+    try {
+      await updateDoc(doc(db, 'sesiones', sesion.id), { fin, ultimo: fin });
+      await updateDoc(doc(db, 'usuarios', sesion.uid), { ultimaSalida: fin });
+    } catch (err) { /* se queda con el último movimiento registrado */ }
+  }
+
+  // Si cierra la pestaña o el navegador, se intenta dejar anotada la salida
+  window.addEventListener('pagehide', () => {
+    if (!sesionActual) return;
+    const fin = Date.now();
+    updateDoc(doc(db, 'sesiones', sesionActual.id), { fin, ultimo: fin }).catch(() => {});
+    updateDoc(doc(db, 'usuarios', sesionActual.uid), { ultimaSalida: fin }).catch(() => {});
+  });
 
   function marcarActividad(){
     ultimaActividadTs = Date.now();
@@ -2749,9 +2831,9 @@ Nos alegra profundamente contar contigo en esta nueva etapa de aprendizaje. Este
 
   // ---------- Ruta del curso (mapa de módulos, temas y subtemas con su estado) ----------
 
-  function construirEstructuraRuta(){
+  function construirEstructuraRuta(flat = contenidoFlat){
     const modulos = [];
-    contenidoFlat.forEach((item, idx) => {
+    flat.forEach((item, idx) => {
       let mo = modulos.find(m => m.id === item.moduloId);
       if (!mo) { mo = { id: item.moduloId, nombre: item.moduloNombre, temas: [] }; modulos.push(mo); }
       let te = mo.temas.find(t => t.id === item.temaId);
@@ -4831,10 +4913,10 @@ Contenido del subtema.
           <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="prof-toggle-estudiantes" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">👥 Estudiantes ▾</button>
+          <button type="button" class="prof-toggle-estudiantes" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📈 Seguimiento de estudiantes ▾</button>
           <button type="button" class="prof-toggle-estructura" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📚 Estructura ▾</button>
         </div>
-        <div class="prof-estudiantes-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12.5px;">Cargando…</div>
+        <div class="prof-estudiantes-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12.5px; text-align:left;">Cargando…</div>
         <div class="prof-estructura-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;">Cargando…</div>
       `;
       profesorCourseList.appendChild(li);
@@ -4847,19 +4929,9 @@ Contenido del subtema.
         const abierto = panel.style.display === 'block';
         panel.style.display = abierto ? 'none' : 'block';
         if (!abierto && panel.dataset.cargado !== 'true') {
-          const estudiantes = await cargarEstudiantesDeCurso(cursoId);
           panel.dataset.cargado = 'true';
-          if (estudiantes.length === 0) {
-            panel.innerHTML = 'Todavía no hay estudiantes matriculados en este curso.';
-          } else {
-            panel.innerHTML = '<ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;">' +
-              estudiantes.map(est => `
-                <li style="padding:7px 9px; background:#fff; border:1px solid var(--line); border-radius:6px;">
-                  <div style="font-weight:600;">${est.nombre || est.email}</div>
-                  <div style="font-size:11px; color:#8493ab;">${est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: ${est.numeroDocumento || '-'}</div>
-                </li>`).join('') +
-              '</ul>';
-          }
+          const cursoSel = cursos.find(c => c.id === cursoId);
+          construirPanelSeguimiento(panel, cursoSel, uid);
         }
       });
     });
@@ -4891,6 +4963,445 @@ Contenido del subtema.
         }
       });
     });
+  }
+
+  // ---------- Seguimiento de estudiantes (Profesor) ----------
+  // Panel en vivo: avance, lecciones vistas, entradas y salidas, resultados, retroalimentación,
+  // mensajes y reportes. Todo se actualiza solo cuando un estudiante avanza, entra o responde.
+
+  const SEG_DIAS_ALERTA = 7;
+
+  function segFecha(ts){
+    return ts ? new Date(ts).toLocaleString('es-PA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+  }
+  function segHaceCuanto(ts){
+    if (!ts) return 'nunca';
+    const m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 1) return 'ahora mismo';
+    if (m < 60) return 'hace ' + m + ' min';
+    const h = Math.floor(m / 60);
+    if (h < 24) return 'hace ' + h + ' h';
+    const d = Math.floor(h / 24);
+    return 'hace ' + d + ' día' + (d === 1 ? '' : 's');
+  }
+  function segDuracion(ms){
+    const min = Math.max(0, Math.round(ms / 60000));
+    if (min < 60) return min + ' min';
+    return Math.floor(min / 60) + ' h ' + String(min % 60).padStart(2, '0') + ' min';
+  }
+  const SEG_NIVEL = { tema: 'Tema', modulo: 'Módulo', curso: 'Examen final' };
+  const SEG_NIVEL_ORDEN = { tema: 1, modulo: 2, curso: 3 };
+
+  // Nota del curso con la misma fórmula que ve el Administrador
+  function segNotaCurso(est, curso, resultadosEst, segundos){
+    const pp = curso.pesoPermanencia ?? 20, pt = curso.pesoTemas ?? 20, pm = curso.pesoModulo ?? 30, pf = curso.pesoFinal ?? 30;
+    const horasMin = curso.horasMinimas || 1;
+    const permanenciaPct = Math.min(100, ((segundos / 3600) / horasMin) * 100);
+    const prom = (nivel) => {
+      const l = resultadosEst.filter(r => r.calificado && r.nivel === nivel);
+      return l.length ? l.reduce((a, r) => a + (r.puntaje || 0), 0) / l.length : 0;
+    };
+    const nota = Math.round((pp / 100) * permanenciaPct + (pt / 100) * prom('tema') + (pm / 100) * prom('modulo') + (pf / 100) * prom('curso'));
+    return { nota, aprobado: nota >= 70, permanenciaPct, temasPct: prom('tema'), moduloPct: prom('modulo'), finalPct: prom('curso') };
+  }
+
+  function segMetricas(est, curso, S){
+    const total = S.flat.length;
+    const pg = est.progresoCursos && est.progresoCursos[curso.id];
+    const terminado = !!(pg && pg.terminado);
+    const maxIdx = terminado ? total : (pg ? (typeof pg.maxIndice === 'number' ? pg.maxIndice : (typeof pg.indice === 'number' ? pg.indice : -1)) : -1);
+    const actualIdx = pg && !terminado && typeof pg.indice === 'number' ? pg.indice : -1;
+    const pct = total === 0 ? 0 : (terminado ? 100 : (maxIdx < 0 ? 0 : Math.min(100, Math.round(((maxIdx + 1) / total) * 100))));
+    const segundos = (est.tiempoPorCurso && est.tiempoPorCurso[curso.id]) || (est.cursoId === curso.id ? est.tiempoAcumuladoSegundos : 0) || 0;
+    const res = S.resultados.filter(r => r.uid === est.uid);
+    const calificados = res.filter(r => r.calificado).sort((a, b) => (SEG_NIVEL_ORDEN[a.nivel] || 9) - (SEG_NIVEL_ORDEN[b.nivel] || 9));
+    const retro = res.filter(r => !r.calificado);
+    const nota = segNotaCurso(est, curso, res, segundos);
+    // lecciones
+    let leccionesTotal = 0, leccionesVistas = 0;
+    const modulos = S.estr.map(mo => {
+      const temas = mo.temas.map(te => {
+        const subs = te.subtemas.filter(su => !String(su.id).startsWith('intro_')).map(su => {
+          const completo = terminado || maxIdx > su.last;
+          const actual = actualIdx >= su.first && actualIdx <= su.last;
+          leccionesTotal++; if (completo) leccionesVistas++;
+          return { nombre: su.nombre, completo, actual };
+        });
+        return { nombre: te.nombre, id: te.id, subs };
+      }).filter(te => te.subs.length > 0);
+      return { nombre: mo.nombre, temas };
+    }).filter(mo => mo.temas.length > 0);
+    const ultimo = est.ultimoAcceso || 0;
+    const enLinea = !!est.ultimaActividad && (Date.now() - est.ultimaActividad) < 3 * 60 * 1000 && (!est.ultimaSalida || est.ultimaActividad > est.ultimaSalida);
+    const diasSin = ultimo ? Math.floor((Date.now() - (est.ultimaActividad || ultimo)) / 86400000) : null;
+    const fallidos = calificados.filter(r => r.aprobado === false);
+    const estados = [];
+    let atencion = false;
+    if (!ultimo && !(est.totalAccesos > 0)) { estados.push({ t: '⚪ Aún no ha ingresado', c: 'mal' }); atencion = true; }
+    else if (!enLinea && diasSin !== null && diasSin >= SEG_DIAS_ALERTA) { estados.push({ t: '🔴 Sin entrar hace ' + diasSin + ' días', c: 'mal' }); atencion = true; }
+    if (fallidos.length) { estados.push({ t: '⚠️ No aprobó: ' + fallidos.map(r => r.titulo).slice(0, 2).join(', '), c: 'mal' }); atencion = true; }
+    if (terminado && nota.aprobado) estados.push({ t: '🏅 Curso aprobado', c: 'ok' });
+    else if (enLinea) estados.push({ t: '🟢 En línea ahora', c: 'ok' });
+    if (!estados.length) estados.push({ t: '✔ Al día', c: 'ok' });
+    const msgs = S.mensajes.filter(m => m.estudianteUid === est.uid);
+    const sinLeer = msgs.filter(m => m.de === 'estudiante' && !m.leido).length;
+    return { total, terminado, maxIdx, pct, segundos, horas: segundos / 3600, calificados, retro, nota, modulos, leccionesTotal, leccionesVistas,
+      entradas: est.totalAccesos || 0, ultimoAcceso: ultimo, ultimaActividad: est.ultimaActividad || ultimo, enLinea, estados, atencion, sinLeer, msgs };
+  }
+
+  async function segCargarSesiones(S, curso, uid){
+    if (S.sesiones[uid]) return S.sesiones[uid];
+    try {
+      const snap = await getDocs(query(collection(db, 'sesiones'), where('uid', '==', uid)));
+      S.sesiones[uid] = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(x => !x.cursosIds || x.cursosIds.includes(curso.id))
+        .sort((a, b) => (b.inicio || 0) - (a.inicio || 0));
+    } catch (err) {
+      S.sesiones[uid] = [];
+    }
+    return S.sesiones[uid];
+  }
+
+  function segPreguntasMasFalladas(S){
+    const cuenta = {};
+    S.resultados.forEach(r => (r.detalle || []).forEach(d => {
+      if (d && d.esCorrecta === false && d.enunciado) {
+        cuenta[d.enunciado] = cuenta[d.enunciado] || { n: 0, correcta: d.respuestaCorrectaTexto || '' };
+        cuenta[d.enunciado].n++;
+      }
+    }));
+    return Object.entries(cuenta).sort((a, b) => b[1].n - a[1].n).slice(0, 5).map(([enunciado, v]) => ({ enunciado, n: v.n, correcta: v.correcta }));
+  }
+
+  function segTituloNivel(S, nivel, nivelId){
+    for (const mo of S.estr) {
+      if (nivel === 'modulo' && mo.id === nivelId) return mo.nombre;
+      for (const te of mo.temas) {
+        if (nivel === 'tema' && te.id === nivelId) return te.nombre;
+        for (const su of te.subtemas) if (nivel === 'subtema' && su.id === nivelId) return su.nombre;
+      }
+    }
+    return '';
+  }
+
+  function construirPanelSeguimiento(panel, curso, profesorUid){
+    panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Cargando seguimiento…</p>';
+    const S = { estudiantes: [], resultados: [], respuestas: [], mensajes: [], flat: [], estr: [], sesiones: {}, abiertos: new Set(), seleccion: new Set(), filtro: 'todos', borradores: {}, grupoAbierto: false, pendiente: false, listo: 0 };
+    let temporizador = null;
+
+    function programarRender(){
+      clearTimeout(temporizador);
+      temporizador = setTimeout(render, 250);
+    }
+
+    function render(){
+      if (S.listo < 3) return;
+      const activo = document.activeElement;
+      if (panel.contains(activo) && (activo.tagName === 'TEXTAREA' || activo.tagName === 'INPUT')) { S.pendiente = true; return; }
+      S.pendiente = false;
+      panel.querySelectorAll('[data-borrador]').forEach(t => { S.borradores[t.dataset.borrador] = t.value; });
+      const scroll = window.scrollY;
+
+      const datos = S.estudiantes
+        .map(est => ({ est, m: segMetricas(est, curso, S) }))
+        .sort((a, b) => (b.m.atencion - a.m.atencion) || String(a.est.nombre || '').localeCompare(String(b.est.nombre || '')));
+      const n = datos.length;
+      if (n === 0) { panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Todavía no hay estudiantes matriculados en este curso.</p>'; return; }
+      const promAvance = Math.round(datos.reduce((a, d) => a + d.m.pct, 0) / n);
+      const enLinea = datos.filter(d => d.m.enLinea).length;
+      const hoy = datos.filter(d => d.m.ultimaActividad && (Date.now() - d.m.ultimaActividad) < 86400000).length;
+      const atencion = datos.filter(d => d.m.atencion).length;
+      const conNota = datos.filter(d => d.m.calificados.length > 0);
+      const promNota = conNota.length ? Math.round(conNota.reduce((a, d) => a + d.m.calificados.reduce((x, r) => x + (r.puntaje || 0), 0) / d.m.calificados.length, 0) / conNota.length) : null;
+      const aprobaron = datos.filter(d => d.m.terminado && d.m.nota.aprobado).length;
+      const sinLeerTotal = datos.reduce((a, d) => a + d.m.sinLeer, 0);
+      const fallidas = segPreguntasMasFalladas(S);
+      const visibles = datos.filter(d => S.filtro === 'todos' || d.m.atencion);
+
+      let html = '';
+      html += '<div class="seg-resumen">' +
+        '<div class="seg-card"><b>' + n + '</b><span>Estudiantes</span></div>' +
+        '<div class="seg-card"><b>' + promAvance + '%</b><span>Avance promedio</span></div>' +
+        '<div class="seg-card"><b>' + enLinea + '</b><span>En línea ahora</span></div>' +
+        '<div class="seg-card"><b>' + hoy + '</b><span>Activos en 24 h</span></div>' +
+        '<div class="seg-card' + (atencion ? ' alerta' : '') + '"><b>' + atencion + '</b><span>Necesitan atención</span></div>' +
+        '<div class="seg-card"><b>' + (promNota === null ? '-' : promNota) + '</b><span>Promedio de evaluaciones</span></div>' +
+        '<div class="seg-card"><b>' + aprobaron + '</b><span>Curso aprobado</span></div>' +
+        '<div class="seg-card' + (sinLeerTotal ? ' alerta' : '') + '"><b>' + sinLeerTotal + '</b><span>Mensajes sin leer</span></div>' +
+        '</div>';
+
+      if (fallidas.length) {
+        html += '<details style="margin-bottom:10px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 10px;"><summary style="cursor:pointer; font-weight:700; font-size:12.5px; color:var(--ink);">🎯 Preguntas que más se fallan (para reforzar en clase)</summary><ol style="margin:8px 0 0; padding-left:18px; font-size:12.5px; line-height:1.5;">' +
+          fallidas.map(f => '<li>' + escaparHtmlImp(f.enunciado) + ' <span class="seg-chip mal">' + f.n + ' error' + (f.n === 1 ? '' : 'es') + '</span>' + (f.correcta ? '<div style="color:var(--teal); font-size:11.5px;">Correcta: ' + escaparHtmlImp(f.correcta) + '</div>' : '') + '</li>').join('') +
+          '</ol></details>';
+      }
+
+      html += '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px;">' +
+        '<button type="button" class="seg-btn' + (S.filtro === 'todos' ? ' prim' : '') + '" data-act="filtro" data-v="todos">Todos (' + n + ')</button>' +
+        '<button type="button" class="seg-btn' + (S.filtro === 'atencion' ? ' prim' : '') + '" data-act="filtro" data-v="atencion">⚠️ Necesitan atención (' + atencion + ')</button>' +
+        '<span style="flex:1;"></span>' +
+        '<button type="button" class="seg-btn" data-act="todos-sel">☑️ Seleccionar todos</button>' +
+        '<button type="button" class="seg-btn" data-act="ninguno-sel">Quitar selección</button>' +
+        '</div>';
+
+      const nSel = S.seleccion.size;
+      html += '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; padding:8px; background:#fffaf0; border:1px solid var(--amber); border-radius:10px;">' +
+        '<span style="font-size:12px; font-weight:700; color:var(--ink);">Con los ' + nSel + ' seleccionado' + (nSel === 1 ? '' : 's') + ':</span>' +
+        '<button type="button" class="seg-btn" data-act="msg-grupo"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>✉️ Enviar mensaje</button>' +
+        '<button type="button" class="seg-btn" data-act="reporte-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>📄 Reporte</button>' +
+        '<button type="button" class="seg-btn" data-act="csv-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>⬇️ Excel (CSV)</button>' +
+        '<button type="button" class="seg-btn" data-act="reporte-todos">📄 Reporte de todo el curso</button>' +
+        '</div>';
+
+      if (S.grupoAbierto && nSel) {
+        html += '<div style="margin-bottom:10px; padding:10px; background:#fff; border:1px solid var(--line); border-radius:10px;">' +
+          '<div style="font-size:12.5px; font-weight:700; margin-bottom:6px;">Mensaje para ' + nSel + ' estudiante' + (nSel === 1 ? '' : 's') + '</div>' +
+          '<textarea rows="3" data-borrador="grupo" placeholder="Escribe el mensaje..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:\'Inter\', sans-serif; resize:vertical;"></textarea>' +
+          '<div style="margin-top:6px; display:flex; gap:6px;"><button type="button" class="seg-btn prim" data-act="enviar-grupo">Enviar</button><button type="button" class="seg-btn" data-act="cancelar-grupo">Cancelar</button></div></div>';
+      }
+
+      if (visibles.length === 0) html += '<p style="font-size:12.5px; color:#8493ab;">Ningún estudiante necesita atención por ahora. 👏</p>';
+
+      html += visibles.map(({ est, m }) => {
+        const abierto = S.abiertos.has(est.uid);
+        return '<div class="seg-est' + (m.atencion ? ' atencion' : '') + '">' +
+          '<div style="display:flex; gap:8px; align-items:flex-start;">' +
+            '<input type="checkbox" data-act="sel" data-uid="' + est.uid + '"' + (S.seleccion.has(est.uid) ? ' checked' : '') + ' style="margin-top:3px; width:auto;">' +
+            '<div style="flex:1; min-width:0;">' +
+              '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">' +
+                '<div><div style="font-weight:700; font-size:13.5px; color:var(--ink);">' + escaparHtmlImp(est.nombre || est.email || '(sin nombre)') + '</div>' +
+                '<div style="font-size:11px; color:#8493ab;">' + (est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula') + ': ' + escaparHtmlImp(est.numeroDocumento || '-') + '</div></div>' +
+                '<div style="text-align:right;"><div style="font-size:16px; font-weight:700; color:' + (m.nota.aprobado ? 'var(--teal)' : 'var(--ink)') + ';">' + m.nota.nota + '/100</div><div style="font-size:10.5px; color:#8493ab;">nota del curso</div></div>' +
+              '</div>' +
+              '<div style="margin:6px 0;">' + m.estados.map(e => '<span class="seg-chip ' + e.c + '">' + escaparHtmlImp(e.t) + '</span>').join('') + (m.sinLeer ? '<span class="seg-chip mal">💬 ' + m.sinLeer + ' mensaje' + (m.sinLeer === 1 ? '' : 's') + ' nuevo' + (m.sinLeer === 1 ? '' : 's') + '</span>' : '') + '</div>' +
+              '<div style="display:flex; align-items:center; gap:8px;"><div class="seg-barra" style="flex:1;"><div style="width:' + m.pct + '%;"></div></div><b style="font-size:12px;">' + m.pct + '%</b></div>' +
+              '<div style="font-size:11.5px; color:#5b6b87; margin-top:6px; line-height:1.6;">📖 ' + m.leccionesVistas + ' de ' + m.leccionesTotal + ' lecciones · ⏱️ ' + formatearHorasMinutos(m.segundos) + ' de ' + (curso.horasMinimas || 0) + ' h · 🔑 ' + m.entradas + ' entrada' + (m.entradas === 1 ? '' : 's') + ' · 🕒 ' + segHaceCuanto(m.ultimaActividad) + '</div>' +
+              '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">' +
+                '<button type="button" class="seg-btn' + (abierto ? ' prim' : '') + '" data-act="detalle" data-uid="' + est.uid + '">' + (abierto ? 'Ocultar detalle ▴' : 'Ver detalle ▾') + '</button>' +
+                '<button type="button" class="seg-btn" data-act="reporte-uno" data-uid="' + est.uid + '">📄 Reporte</button>' +
+              '</div>' +
+              (abierto ? '<div class="seg-detalle">' + detalleHtml(est, m) + '</div>' : '') +
+            '</div></div></div>';
+      }).join('');
+
+      panel.innerHTML = html;
+      panel.querySelectorAll('[data-borrador]').forEach(t => { if (S.borradores[t.dataset.borrador]) t.value = S.borradores[t.dataset.borrador]; });
+      window.scrollTo({ top: scroll });
+    }
+
+    function detalleHtml(est, m){
+      let h = '';
+      // 1. Lecciones
+      h += '<h6>📚 Lo que ha visto</h6>';
+      if (m.modulos.length === 0) h += '<p style="color:#8493ab; margin:0;">Este curso todavía no tiene lecciones.</p>';
+      h += m.modulos.map(mo => {
+        const hechas = mo.temas.reduce((a, te) => a + te.subs.filter(s => s.completo).length, 0);
+        const tot = mo.temas.reduce((a, te) => a + te.subs.length, 0);
+        return '<details style="margin-bottom:4px;"><summary style="cursor:pointer; font-weight:600;">' + escaparHtmlImp(mo.nombre) + ' <span class="seg-chip' + (hechas === tot ? ' ok' : '') + '">' + hechas + '/' + tot + '</span></summary><div style="padding-left:12px;">' +
+          mo.temas.map(te => '<div style="font-weight:600; color:var(--ink-soft); margin-top:4px;">' + escaparHtmlImp(te.nombre) + '</div>' +
+            te.subs.map(su => '<div style="padding-left:8px;">' + (su.actual ? '▶' : (su.completo ? '✅' : '⬜')) + ' ' + escaparHtmlImp(su.nombre) + (su.actual ? ' <span class="seg-chip">está aquí</span>' : '') + '</div>').join('')).join('') +
+          '</div></details>';
+      }).join('');
+
+      // 2. Entradas y salidas
+      h += '<h6>🔑 Entradas y salidas</h6>';
+      const ses = S.sesiones[est.uid];
+      if (!ses) {
+        h += '<p style="color:#8493ab; margin:0;">Cargando…</p>';
+        segCargarSesiones(S, curso, est.uid).then(() => programarRender());
+      } else if (ses.length === 0) {
+        h += '<p style="color:#8493ab; margin:0;">Todavía no hay entradas registradas (se empiezan a registrar desde esta versión).</p>';
+      } else {
+        h += '<table class="seg-tabla"><tr><th>Entró</th><th>Salió</th><th>Duración</th></tr>' +
+          ses.slice(0, 12).map(x => {
+            const fin = x.fin || x.ultimo || x.inicio;
+            return '<tr><td>' + segFecha(x.inicio) + '</td><td>' + segFecha(fin) + (x.fin ? '' : ' <span style="color:#8493ab;">(aprox.)</span>') + '</td><td>' + segDuracion(fin - x.inicio) + '</td></tr>';
+          }).join('') + '</table>' +
+          (ses.length > 12 ? '<div style="color:#8493ab; font-size:11px; margin-top:3px;">Se muestran las últimas 12 de ' + ses.length + ' entradas.</div>' : '');
+      }
+
+      // 3. Evaluaciones
+      h += '<h6>📝 Evaluaciones con nota</h6>';
+      h += m.calificados.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha presentado evaluaciones.</p>' :
+        '<table class="seg-tabla">' + m.calificados.map(r => {
+          const falladas = (r.detalle || []).filter(d => d && d.esCorrecta === false);
+          return '<tr><td>' + escaparHtmlImp(r.titulo || '') + '<div style="color:#8493ab; font-size:11px;">' + (SEG_NIVEL[r.nivel] || '') + (r.fecha && r.fecha.toMillis ? ' · ' + segFecha(r.fecha.toMillis()) : '') + '</div>' +
+            (falladas.length ? '<details><summary style="cursor:pointer; color:var(--danger); font-size:11.5px;">Ver ' + falladas.length + ' pregunta' + (falladas.length === 1 ? '' : 's') + ' fallada' + (falladas.length === 1 ? '' : 's') + '</summary>' + falladas.map(d => '<div style="font-size:11.5px; margin:3px 0;">• ' + escaparHtmlImp(d.enunciado || '') + '<br><span style="color:#b3261e;">Respondió: ' + escaparHtmlImp(d.respuestaElegidaTexto || '-') + '</span> · <span style="color:var(--teal);">Correcta: ' + escaparHtmlImp(d.respuestaCorrectaTexto || '-') + '</span></div>').join('') + '</details>' : '') +
+            '</td><td style="white-space:nowrap; font-weight:700; color:' + (r.aprobado ? 'var(--teal)' : 'var(--danger)') + ';">' + r.puntaje + '/100<br>' + (r.aprobado ? '✓ Aprobado' : '✗ No aprobado') + '</td></tr>';
+        }).join('') + '</table>';
+
+      // 4. Retroalimentación
+      h += '<h6>🔎 Pruebas de retroalimentación (sin nota)</h6>';
+      h += m.retro.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha hecho pruebas de retroalimentación.</p>' :
+        '<table class="seg-tabla">' + m.retro.map(r => {
+          const falladas = (r.detalle || []).filter(d => d && d.esCorrecta === false);
+          return '<tr><td>' + escaparHtmlImp(r.titulo || '') +
+            (falladas.length ? '<details><summary style="cursor:pointer; color:var(--danger); font-size:11.5px;">Qué falló (' + falladas.length + ')</summary>' + falladas.map(d => '<div style="font-size:11.5px; margin:3px 0;">• ' + escaparHtmlImp(d.enunciado || '') + '<br><span style="color:var(--teal);">Correcta: ' + escaparHtmlImp(d.respuestaCorrectaTexto || '-') + '</span></div>').join('') + '</details>' : '') +
+            '</td><td style="white-space:nowrap; font-weight:700;">' + r.puntaje + '/100</td></tr>';
+        }).join('') + '</table>';
+
+      // 5. Actividades
+      const resp = S.respuestas.filter(r => r.uid === est.uid);
+      h += '<h6>💭 Reflexiones y actividades entregadas</h6>';
+      h += resp.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha entregado ninguna.</p>' :
+        resp.map(r => '<div style="padding:6px 8px; background:var(--paper); border-radius:8px; margin-bottom:5px;"><div style="font-weight:600;">' + (r.nivel === 'tema' ? '📝 Actividad de aprendizaje' : '💭 Reflexión') + ': ' + escaparHtmlImp(segTituloNivel(S, r.nivel, r.nivelId) || '') + '</div>' +
+          (r.respuestaTexto ? '<div style="white-space:pre-wrap;">' + escaparHtmlImp(r.respuestaTexto) + '</div>' : '') +
+          (r.enlaceDocumento ? '<div><a href="' + escaparHtmlImp(r.enlaceDocumento) + '" target="_blank" rel="noopener">🔗 Documento adjunto</a></div>' : '') + '</div>').join('');
+
+      // 6. Mensajes
+      h += '<h6>✉️ Conversación con ' + escaparHtmlImp(est.nombre || 'el estudiante') + '</h6>';
+      h += '<div class="msg-hilo">' + (m.msgs.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no hay mensajes.</p>' :
+        m.msgs.map(x => '<div class="msg-burbuja ' + (x.de === 'profesor' ? 'estudiante' : 'profesor') + '">' + escaparHtmlImp(x.texto || '') + '<small>' + (x.de === 'profesor' ? 'Tú' : escaparHtmlImp(x.deNombre || 'Estudiante')) + ' · ' + segFecha(x.creado) + '</small></div>').join('')) + '</div>' +
+        '<textarea rows="2" data-borrador="m_' + est.uid + '" placeholder="Escribe un mensaje para este estudiante..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:\'Inter\', sans-serif; resize:vertical;"></textarea>' +
+        '<button type="button" class="seg-btn prim" style="margin-top:6px;" data-act="enviar" data-uid="' + est.uid + '">Enviar mensaje</button>';
+      return h;
+    }
+
+    async function enviarMensajes(uids, texto){
+      const lote = writeBatch(db);
+      uids.forEach(uid => {
+        const est = S.estudiantes.find(e => e.uid === uid);
+        lote.set(doc(collection(db, 'mensajes')), {
+          cursoId: curso.id, estudianteUid: uid, estudianteNombre: (est && est.nombre) || '', de: 'profesor', deUid: profesorUid,
+          deNombre: (identidadActual && identidadActual.nombre) || 'Profesor', profesorUid, texto, creado: Date.now(), leido: false
+        });
+      });
+      await lote.commit();
+    }
+
+    // ---- reportes ----
+    async function datosParaReporte(uids){
+      await Promise.all(uids.map(uid => segCargarSesiones(S, curso, uid)));
+      return uids.map(uid => S.estudiantes.find(e => e.uid === uid)).filter(Boolean).map(est => ({ est, m: segMetricas(est, curso, S), ses: S.sesiones[est.uid] || [], resp: S.respuestas.filter(r => r.uid === est.uid) }));
+    }
+
+    function csvDe(filas){
+      const esc = (v) => '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"';
+      const cab = ['Nombre', 'Tipo de documento', 'Número de documento', 'Avance %', 'Lecciones vistas', 'Lecciones totales', 'Horas en la plataforma', 'Horas mínimas', 'Entradas', 'Última conexión', 'Nota del curso', 'Evaluaciones presentadas', 'Evaluaciones aprobadas', 'Estado'];
+      const lineas = [cab].concat(filas.map(({ est, m }) => [
+        est.nombre || '', est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula', est.numeroDocumento || '', m.pct, m.leccionesVistas, m.leccionesTotal,
+        (m.horas).toFixed(1), curso.horasMinimas || 0, m.entradas, m.ultimaActividad ? segFecha(m.ultimaActividad) : 'Nunca', m.nota.nota,
+        m.calificados.length, m.calificados.filter(r => r.aprobado).length, m.estados.map(e => e.t.replace(/^[^\wÁÉÍÓÚáéíóúñÑ]+\s*/, '')).join(' / ')
+      ]));
+      return '﻿' + lineas.map(l => l.map(esc).join(',')).join('\r\n');
+    }
+
+    function descargarCsv(filas){
+      const blob = new Blob([csvDe(filas)], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'seguimiento-' + String(curso.nombre || 'curso').replace(/[^\wÁÉÍÓÚáéíóúñÑ]+/g, '-') + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+
+    async function abrirReporte(uids){
+      const ventana = window.open('', '_blank');
+      if (!ventana) { alert('El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio e intenta de nuevo.'); return; }
+      ventana.document.write('<p style="font-family:sans-serif; padding:20px;">Preparando el reporte…</p>');
+      const filas = await datosParaReporte(uids);
+      const E = escaparHtmlImp;
+      const fecha = new Date().toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
+      const encabezado = curso.encabezadoImpresion ? '<div class="enc">' + E(curso.encabezadoImpresion) + '</div>' : '';
+      let cuerpo = '';
+      if (filas.length > 1) {
+        cuerpo += '<section>' + encabezado + '<h1>Reporte de seguimiento del grupo</h1><p class="sub">' + E(curso.nombre || '') + ' · ' + fecha + ' · ' + filas.length + ' estudiantes</p>' +
+          '<table><tr><th>Estudiante</th><th>Documento</th><th>Avance</th><th>Horas</th><th>Entradas</th><th>Última conexión</th><th>Nota</th><th>Estado</th></tr>' +
+          filas.map(({ est, m }) => '<tr><td>' + E(est.nombre || '') + '</td><td>' + E(est.numeroDocumento || '-') + '</td><td>' + m.pct + '%</td><td>' + m.horas.toFixed(1) + '</td><td>' + m.entradas + '</td><td>' + (m.ultimaActividad ? segFecha(m.ultimaActividad) : 'Nunca') + '</td><td><b>' + m.nota.nota + '</b></td><td>' + E(m.estados.map(e => e.t).join(' · ')) + '</td></tr>').join('') +
+          '</table><p class="nota">Nota del curso = permanencia ' + (curso.pesoPermanencia ?? 20) + '% + exámenes de temas ' + (curso.pesoTemas ?? 20) + '% + módulo ' + (curso.pesoModulo ?? 30) + '% + final ' + (curso.pesoFinal ?? 30) + '%. Mínimo para aprobar: 70/100.</p></section>';
+      }
+      filas.forEach(({ est, m, ses, resp }) => {
+        cuerpo += '<section>' + encabezado + '<h1>Reporte de seguimiento del estudiante</h1><p class="sub">' + E(curso.nombre || '') + ' · ' + fecha + '</p>' +
+          '<table class="datos"><tr><td class="et">Nombre completo</td><td>' + E(est.nombre || '') + '</td><td class="et">' + (est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula') + '</td><td>' + E(est.numeroDocumento || '-') + '</td></tr></table>' +
+          '<div class="kpis"><div><b>' + m.pct + '%</b>Avance</div><div><b>' + m.leccionesVistas + '/' + m.leccionesTotal + '</b>Lecciones vistas</div><div><b>' + formatearHorasMinutos(m.segundos) + '</b>de ' + (curso.horasMinimas || 0) + ' h mínimas</div><div><b>' + m.entradas + '</b>Entradas</div><div><b>' + m.nota.nota + '/100</b>' + (m.nota.aprobado ? 'Nota (aprueba)' : 'Nota del curso') + '</div></div>' +
+          '<p class="nota">Última conexión: ' + (m.ultimaActividad ? segFecha(m.ultimaActividad) : 'Nunca') + ' · Estado: ' + E(m.estados.map(e => e.t).join(' · ')) + '</p>' +
+          '<h2>Evaluaciones con nota</h2>' + (m.calificados.length ? '<table><tr><th>Evaluación</th><th>Tipo</th><th>Puntaje</th><th>Resultado</th></tr>' + m.calificados.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + (SEG_NIVEL[r.nivel] || '') + '</td><td>' + r.puntaje + '/100</td><td>' + (r.aprobado ? 'Aprobado' : 'No aprobado') + '</td></tr>').join('') + '</table>' : '<p class="nota">Sin evaluaciones presentadas.</p>') +
+          '<h2>Pruebas de retroalimentación</h2>' + (m.retro.length ? '<table><tr><th>Prueba</th><th>Puntaje</th></tr>' + m.retro.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + r.puntaje + '/100</td></tr>').join('') + '</table>' : '<p class="nota">Sin pruebas realizadas.</p>') +
+          '<h2>Reflexiones y actividades entregadas</h2>' + (resp.length ? '<ul>' + resp.map(r => '<li>' + (r.nivel === 'tema' ? 'Actividad de aprendizaje' : 'Reflexión') + ': ' + E(segTituloNivel(S, r.nivel, r.nivelId) || '') + '</li>').join('') + '</ul>' : '<p class="nota">Sin entregas.</p>') +
+          '<h2>Últimas entradas a la plataforma</h2>' + (ses.length ? '<table><tr><th>Entró</th><th>Salió</th><th>Duración</th></tr>' + ses.slice(0, 8).map(x => { const fin = x.fin || x.ultimo || x.inicio; return '<tr><td>' + segFecha(x.inicio) + '</td><td>' + segFecha(fin) + '</td><td>' + segDuracion(fin - x.inicio) + '</td></tr>'; }).join('') + '</table>' : '<p class="nota">Sin entradas registradas.</p>') +
+          '<h2>Observaciones del profesor</h2><div class="obs"></div></section>';
+      });
+      ventana.document.open();
+      ventana.document.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Reporte de seguimiento</title><style>' +
+        '@page{size:letter;margin:1.5cm;} *{box-sizing:border-box;} body{font-family:Georgia,"Times New Roman",serif;color:#16233d;margin:0;font-size:12px;} section{page-break-after:always;} section:last-child{page-break-after:auto;}' +
+        '.enc{white-space:pre-wrap;text-align:center;border-bottom:2px solid #025526;padding-bottom:8px;margin-bottom:10px;font-size:12px;} h1{font-size:18px;color:#025526;text-align:center;margin:0 0 2px;} .sub{text-align:center;color:#5b6b87;margin:0 0 12px;}' +
+        'h2{font-size:13px;color:#025526;border-bottom:1px solid #c3cbda;padding-bottom:3px;margin:14px 0 6px;} table{width:100%;border-collapse:collapse;margin-bottom:6px;} th,td{border:1px solid #c3cbda;padding:4px 6px;text-align:left;font-size:11.5px;} th{background:#f4f7fb;} td.et{font-weight:700;background:#f4f7fb;width:16%;}' +
+        '.kpis{display:flex;gap:8px;margin:10px 0;} .kpis div{flex:1;border:1px solid #c3cbda;border-radius:6px;padding:6px;text-align:center;font-size:10.5px;color:#5b6b87;} .kpis b{display:block;font-size:16px;color:#16233d;} .nota{font-size:11px;color:#5b6b87;margin:4px 0;} ul{margin:4px 0;padding-left:18px;} .obs{height:90px;border:1px solid #c3cbda;border-radius:6px;}' +
+        '</style></head><body>' + cuerpo + '</body></html>');
+      ventana.document.close();
+      ventana.focus();
+      setTimeout(() => ventana.print(), 400);
+    }
+
+    // ---- eventos (un solo oyente, el panel se redibuja solo) ----
+    panel.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.dataset && t.dataset.act === 'sel') {
+        if (t.checked) S.seleccion.add(t.dataset.uid); else S.seleccion.delete(t.dataset.uid);
+        render();
+      }
+    });
+    panel.addEventListener('focusout', () => { if (S.pendiente) setTimeout(render, 250); });
+    panel.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b || b.tagName === 'INPUT') return;
+      const act = b.dataset.act;
+      const uid = b.dataset.uid;
+      if (act === 'filtro') { S.filtro = b.dataset.v; render(); }
+      else if (act === 'todos-sel') { S.estudiantes.forEach(x => S.seleccion.add(x.uid)); render(); }
+      else if (act === 'ninguno-sel') { S.seleccion.clear(); render(); }
+      else if (act === 'detalle') {
+        if (S.abiertos.has(uid)) S.abiertos.delete(uid);
+        else {
+          S.abiertos.add(uid);
+          S.mensajes.filter(m => m.estudianteUid === uid && m.de === 'estudiante' && !m.leido).forEach(m => updateDoc(doc(db, 'mensajes', m.id), { leido: true }).catch(() => {}));
+        }
+        render();
+      }
+      else if (act === 'msg-grupo') { S.grupoAbierto = true; render(); }
+      else if (act === 'cancelar-grupo') { S.grupoAbierto = false; S.borradores.grupo = ''; render(); }
+      else if (act === 'enviar-grupo') {
+        const t = panel.querySelector('[data-borrador="grupo"]');
+        const texto = t ? t.value.trim() : '';
+        if (!texto) return;
+        b.disabled = true;
+        try { await enviarMensajes(Array.from(S.seleccion), texto); S.borradores.grupo = ''; S.grupoAbierto = false; alert('Mensaje enviado a ' + S.seleccion.size + ' estudiante(s).'); }
+        catch (err) { alert('No se pudo enviar el mensaje. Intenta de nuevo.'); b.disabled = false; }
+        render();
+      }
+      else if (act === 'enviar') {
+        const t = panel.querySelector('[data-borrador="m_' + uid + '"]');
+        const texto = t ? t.value.trim() : '';
+        if (!texto) return;
+        b.disabled = true;
+        try { await enviarMensajes([uid], texto); S.borradores['m_' + uid] = ''; }
+        catch (err) { alert('No se pudo enviar el mensaje. Intenta de nuevo.'); }
+        b.disabled = false;
+        render();
+      }
+      else if (act === 'reporte-uno') abrirReporte([uid]);
+      else if (act === 'reporte-sel') abrirReporte(Array.from(S.seleccion));
+      else if (act === 'reporte-todos') abrirReporte(S.estudiantes.map(x => x.uid));
+      else if (act === 'csv-sel') descargarCsv(await datosParaReporte(Array.from(S.seleccion)));
+    });
+
+    // ---- datos en vivo ----
+    (async () => {
+      try {
+        S.flat = await cargarContenidoDelCurso(curso.id);
+        S.estr = construirEstructuraRuta(S.flat);
+      } catch (err) { S.flat = []; S.estr = []; }
+      S.listo++;
+      const falla = (err) => { console.error('Seguimiento:', err); panel.innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudo cargar el seguimiento. Revisa las reglas de Firestore e intenta de nuevo.</p>'; };
+      unsubsProfesor.push(onSnapshot(query(collection(db, 'usuarios'), where('cursosIds', 'array-contains', curso.id), where('rol', '==', 'estudiante')),
+        (snap) => { S.estudiantes = snap.docs.map(d => ({ uid: d.id, ...d.data() })); S.listo++; programarRender(); }, falla));
+      unsubsProfesor.push(onSnapshot(query(collection(db, 'examenesResultados'), where('cursoId', '==', curso.id)),
+        (snap) => { S.resultados = snap.docs.map(d => d.data()); S.listo++; programarRender(); }, falla));
+      unsubsProfesor.push(onSnapshot(query(collection(db, 'actividadesRespuestas'), where('cursoId', '==', curso.id)),
+        (snap) => { S.respuestas = snap.docs.map(d => d.data()); programarRender(); }, () => {}));
+      unsubsProfesor.push(onSnapshot(query(collection(db, 'mensajes'), where('cursoId', '==', curso.id)),
+        (snap) => { S.mensajes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || 0) - (b.creado || 0)); programarRender(); }, () => {}));
+    })();
   }
 
   // ---------- Bienvenida general (un solo documento, aplica a todos los cursos) ----------
@@ -5215,6 +5726,87 @@ Contenido del subtema.
     }
   });
 
+  // ---------- Mensajes entre el estudiante y su profesor ----------
+  const studentMensajes = document.getElementById('studentMensajes');
+  const studentMensajesBadge = document.getElementById('studentMensajesBadge');
+  const studentMensajesLista = document.getElementById('studentMensajesLista');
+  const studentMensajeInput = document.getElementById('studentMensajeInput');
+  const studentMensajeEnviarBtn = document.getElementById('studentMensajeEnviarBtn');
+  let unsubMensajesEst = null;
+  let mensajesEstCache = [];
+  let mensajesEstCurso = { cursoId: '', profesorUid: '' };
+  const unsubsProfesor = [];
+
+  function mostrarAvisoToast(texto){
+    const t = document.createElement('div');
+    t.className = 'toast-aviso';
+    t.textContent = texto;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 9000);
+  }
+
+  function pintarMensajesEstudiante(){
+    const sinLeer = mensajesEstCache.filter(m => m.de === 'profesor' && !m.leido).length;
+    studentMensajesBadge.style.display = sinLeer ? 'inline-block' : 'none';
+    studentMensajesBadge.textContent = sinLeer ? `${sinLeer} nuevo${sinLeer === 1 ? '' : 's'}` : '';
+    if (mensajesEstCache.length === 0) {
+      studentMensajesLista.innerHTML = '<p class="est-ayuda" style="margin:0;">Aquí podrás escribirle a tu profesor y ver sus respuestas.</p>';
+      return;
+    }
+    studentMensajesLista.innerHTML = mensajesEstCache.map(m => `
+      <div class="msg-burbuja ${m.de === 'profesor' ? 'profesor' : 'estudiante'}">${escaparHtmlImp(m.texto || '')}<small>${m.de === 'profesor' ? escaparHtmlImp(m.deNombre || 'Profesor') + ' · ' : ''}${new Date(m.creado || 0).toLocaleString('es-PA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>
+    `).join('');
+    studentMensajesLista.scrollTop = studentMensajesLista.scrollHeight;
+  }
+
+  function marcarMensajesLeidosEstudiante(){
+    mensajesEstCache.filter(m => m.de === 'profesor' && !m.leido).forEach(m => {
+      updateDoc(doc(db, 'mensajes', m.id), { leido: true }).catch(() => {});
+    });
+  }
+
+  function escucharMensajesEstudiante(uid, cursoId, profesorUid){
+    if (unsubMensajesEst) { unsubMensajesEst(); unsubMensajesEst = null; }
+    mensajesEstCache = [];
+    mensajesEstCurso = { cursoId, profesorUid: profesorUid || '' };
+    studentMensajes.open = false;
+    studentMensajes.style.display = profesorUid ? 'block' : 'none';
+    pintarMensajesEstudiante();
+    if (!profesorUid) return;
+    let primera = true;
+    unsubMensajesEst = onSnapshot(query(collection(db, 'mensajes'), where('estudianteUid', '==', uid)), (snap) => {
+      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.cursoId === cursoId).sort((a, b) => (a.creado || 0) - (b.creado || 0));
+      const conocidos = new Set(mensajesEstCache.map(m => m.id));
+      mensajesEstCache = lista;
+      pintarMensajesEstudiante();
+      const nuevos = lista.filter(m => m.de === 'profesor' && !m.leido && !conocidos.has(m.id));
+      if (!primera && nuevos.length && document.body.classList.contains('modo-estudio')) {
+        mostrarAvisoToast('✉️ Tienes un mensaje nuevo de tu profesor. Pulsa «Salir» para leerlo.');
+      }
+      primera = false;
+      if (studentMensajes.open) marcarMensajesLeidosEstudiante();
+    }, (err) => console.error('Error al leer mensajes:', err));
+  }
+
+  studentMensajes.addEventListener('toggle', () => { if (studentMensajes.open) marcarMensajesLeidosEstudiante(); });
+  studentMensajeEnviarBtn.addEventListener('click', async () => {
+    const texto = studentMensajeInput.value.trim();
+    if (!texto || !identidadActual || !identidadActual.uid || !mensajesEstCurso.profesorUid) return;
+    studentMensajeEnviarBtn.disabled = true;
+    try {
+      await addDoc(collection(db, 'mensajes'), {
+        cursoId: mensajesEstCurso.cursoId, estudianteUid: identidadActual.uid, estudianteNombre: identidadActual.nombre || '',
+        de: 'estudiante', deUid: identidadActual.uid, deNombre: identidadActual.nombre || '', profesorUid: mensajesEstCurso.profesorUid,
+        texto, creado: Date.now(), leido: false
+      });
+      studentMensajeInput.value = '';
+    } catch (err) {
+      alert('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.');
+    } finally {
+      studentMensajeEnviarBtn.disabled = false;
+    }
+  });
+
   // Carga y pinta la pantalla de bienvenida de UN curso específico de un estudiante
   // matriculado en varios. Se usa al entrar y cada vez que cambia de curso en el selector.
   async function mostrarCursoParaEstudiante(uid, cursoId){
@@ -5258,6 +5850,7 @@ Contenido del subtema.
       }
       document.querySelectorAll('#studentCourseSwitcherList .student-course-switch-btn').forEach(b => b.classList.toggle('activo', b.dataset.cursoId === cursoId));
 
+      escucharMensajesEstudiante(uid, cursoId, curso.profesorUid || '');
       studentContentPlaceholder.style.display = 'none';
       studentBeginBtn.style.display = 'inline-block';
       studentBeginBtn.disabled = false;
@@ -5287,6 +5880,7 @@ Contenido del subtema.
   logoutBtn.addEventListener('click', async () => {
     detenerConteoDePermanencia();
     detenerRelojVisible();
+    await cerrarRegistroSesion();
     await signOut(auth);
   });
 
@@ -5334,6 +5928,8 @@ Contenido del subtema.
       if (cursosIds.length === 0 && datosUsuario.cursoId) {
         cursosIds = [datosUsuario.cursoId];
       }
+
+      iniciarRegistroSesion(uid, datosUsuario.nombre, cursosIds);
 
       // Si entró usando el enlace de invitación de un curso y todavía no está matriculado
       // en ese curso, se matricula ahora mismo, así es como un estudiante que ya tiene
@@ -5393,7 +5989,7 @@ Contenido del subtema.
       adminSection.style.display = 'none';
       studentSection.style.display = 'none';
       panelSubtitle.style.display = 'block';
-      panelSubtitle.textContent = 'Consulta tus cursos asignados, estudiantes matriculados y estructura de contenido.';
+      panelSubtitle.textContent = 'Sigue el avance de tus estudiantes, escríbeles y genera reportes.';
       profesorSection.style.display = 'block';
       iniciarPanelProfesor(uid);
     } else {
@@ -5459,6 +6055,11 @@ Contenido del subtema.
     if (!user) {
       detenerConteoDePermanencia();
       detenerRelojVisible();
+      sesionActual = null;
+      if (intervaloSesion) { clearInterval(intervaloSesion); intervaloSesion = null; }
+      if (unsubMensajesEst) { unsubMensajesEst(); unsubMensajesEst = null; }
+      unsubsProfesor.forEach(f => { try { f(); } catch (err) {} });
+      unsubsProfesor.length = 0;
       panelView.style.display = 'none';
       loginView.style.display = 'block';
       submitBtn.disabled = false;
