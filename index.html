@@ -356,6 +356,24 @@
   .msg-burbuja.profesor{ align-self:flex-start; background:#e8f0ec; color:var(--ink); }
   .msg-burbuja.estudiante{ align-self:flex-end; background:var(--ink); color:#fff; }
   .toast-aviso{ position:fixed; right:14px; bottom:84px; z-index:9999; max-width:300px; padding:12px 14px; background:var(--ink); color:#fff; border-radius:12px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+  .prof-selector{ margin-bottom:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .prof-curso-chip{ padding:8px 14px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .prof-curso-chip.activo{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .prof-curso-cab{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+  .prof-tabs{ display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid var(--line); margin-bottom:12px; position:sticky; top:0; background:var(--paper,#f4f7fb); z-index:5; padding-top:4px; }
+  .prof-tab{ padding:9px 13px; border:none; background:transparent; color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; border-bottom:3px solid transparent; margin-bottom:-2px; border-radius:8px 8px 0 0; }
+  .prof-tab.activa{ color:var(--ink); border-bottom-color:var(--amber); background:#fff; }
+  .prof-tab-ins{ display:inline-block; margin-left:5px; min-width:18px; padding:0 5px; border-radius:999px; background:var(--danger); color:#fff; font-size:10.5px; line-height:18px; text-align:center; }
+  .seg-fechas{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:12px; display:flex; gap:12px; }
+  .seg-bloque{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+  .seg-bloque h6{ margin:0 0 8px; font-size:13.5px; color:var(--ink); }
+  .seg-fila-aviso, .seg-fila-mod{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .seg-fila-aviso:last-child, .seg-fila-mod:last-child{ border-bottom:none; }
+  .seg-acciones{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:10px; }
+  .seg-hilo-item{ border:1px solid var(--line); border-radius:10px; padding:9px 10px; margin-bottom:6px; background:#fff; }
+  .seg-hilo-item.nuevo{ border-left:4px solid var(--danger); }
+  .seg-tabla-eval th, .seg-tabla-eval td{ white-space:nowrap; }
+  .seg-tabla th{ background:var(--paper); }
   .seg-resumen{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-bottom:12px; }
   .seg-card{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:9px 10px; }
   .seg-card b{ display:block; font-size:19px; color:var(--ink); }
@@ -1046,10 +1064,9 @@
     const ref = doc(collection(db, 'sesiones'));
     sesionActual = { id: ref.id, uid };
     const ahora = Date.now();
-    try {
-      await setDoc(ref, { uid, nombre: nombre || '', cursosIds: cursosIds || [], inicio: ahora, ultimo: ahora, fin: null });
-      await updateDoc(doc(db, 'usuarios', uid), { totalAccesos: increment(1), ultimoAcceso: ahora, ultimaActividad: ahora });
-    } catch (err) { /* el registro es de ayuda; si falla no interrumpe al estudiante */ }
+    // Cada anotación va por separado: si una falla, la otra igual se guarda
+    try { await updateDoc(doc(db, 'usuarios', uid), { totalAccesos: increment(1), ultimoAcceso: ahora, ultimaActividad: ahora }); } catch (err) { /* no interrumpe al estudiante */ }
+    try { await setDoc(ref, { uid, nombre: nombre || '', cursosIds: cursosIds || [], inicio: ahora, ultimo: ahora, fin: null }); } catch (err) { /* no interrumpe al estudiante */ }
     if (intervaloSesion) clearInterval(intervaloSesion);
     intervaloSesion = setInterval(latidoSesion, 60000);
   }
@@ -1068,10 +1085,8 @@
     sesionActual = null;
     if (intervaloSesion) { clearInterval(intervaloSesion); intervaloSesion = null; }
     const fin = finTs || Date.now();
-    try {
-      await updateDoc(doc(db, 'sesiones', sesion.id), { fin, ultimo: fin });
-      await updateDoc(doc(db, 'usuarios', sesion.uid), { ultimaSalida: fin });
-    } catch (err) { /* se queda con el último movimiento registrado */ }
+    try { await updateDoc(doc(db, 'sesiones', sesion.id), { fin, ultimo: fin }); } catch (err) { /* se queda con el último movimiento */ }
+    try { await updateDoc(doc(db, 'usuarios', sesion.uid), { ultimaSalida: fin }); } catch (err) { /* idem */ }
   }
 
   // Si cierra la pestaña o el navegador, se intenta dejar anotada la salida
@@ -4890,92 +4905,24 @@ Contenido del subtema.
       '</ul>';
   }
 
-  async function iniciarPanelProfesor(uid){
-    const cursosSnap = await getDocs(query(collection(db, 'cursos'), where('profesorUid', '==', uid)));
-    const cursos = cursosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    profesorCourseList.innerHTML = '';
-    if (cursos.length === 0) {
-      profesorCourseEmpty.style.display = 'block';
-      return;
-    }
-    profesorCourseEmpty.style.display = 'none';
-
-    cursos.forEach(curso => {
-      const li = document.createElement('li');
-      li.className = 'course-item';
-      li.style.flexDirection = 'column';
-      li.style.alignItems = 'stretch';
-      li.style.gap = '10px';
-      li.innerHTML = `
-        <div>
-          <div class="course-name">${curso.nombre}</div>
-          <div class="course-hours">Mínimo ${curso.horasMinimas} horas</div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="prof-toggle-estudiantes" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📈 Seguimiento de estudiantes ▾</button>
-          <button type="button" class="prof-toggle-estructura" data-curso-id="${curso.id}" style="padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:600; cursor:pointer;">📚 Estructura ▾</button>
-        </div>
-        <div class="prof-estudiantes-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px; font-size:12.5px; text-align:left;">Cargando…</div>
-        <div class="prof-estructura-panel" data-for="${curso.id}" style="display:none; padding:10px; background:var(--paper); border:1px solid var(--line); border-radius:8px;">Cargando…</div>
-      `;
-      profesorCourseList.appendChild(li);
-    });
-
-    document.querySelectorAll('.prof-toggle-estudiantes').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const cursoId = btn.dataset.cursoId;
-        const panel = document.querySelector(`.prof-estudiantes-panel[data-for="${cursoId}"]`);
-        const abierto = panel.style.display === 'block';
-        panel.style.display = abierto ? 'none' : 'block';
-        if (!abierto && panel.dataset.cargado !== 'true') {
-          panel.dataset.cargado = 'true';
-          const cursoSel = cursos.find(c => c.id === cursoId);
-          construirPanelSeguimiento(panel, cursoSel, uid);
-        }
-      });
-    });
-
-    document.querySelectorAll('.prof-toggle-estructura').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const cursoId = btn.dataset.cursoId;
-        const panel = document.querySelector(`.prof-estructura-panel[data-for="${cursoId}"]`);
-        const abierto = panel.style.display === 'block';
-        panel.style.display = abierto ? 'none' : 'block';
-        if (!abierto && panel.dataset.cargado !== 'true') {
-          const modulos = await cargarEstructuraSoloLectura(cursoId);
-          panel.dataset.cargado = 'true';
-          panel.innerHTML = renderEstructuraSoloLectura(modulos, cursoId);
-
-          panel.querySelectorAll('.foro-toggle-btn-prof').forEach(foroBtn => {
-            foroBtn.addEventListener('click', () => {
-              const moduloId = foroBtn.dataset.moduloId;
-              const cId = foroBtn.dataset.cursoId;
-              const foroPanel = panel.querySelector(`.foro-panel-prof[data-for="${moduloId}"]`);
-              const foroAbierto = foroPanel.style.display === 'block';
-              foroPanel.style.display = foroAbierto ? 'none' : 'block';
-              if (!foroAbierto && foroPanel.dataset.cargado !== 'true') {
-                foroPanel.dataset.cargado = 'true';
-                construirPanelForo(foroPanel, { moduloId, cursoId: cId, esProfesor: true });
-              }
-            });
-          });
-        }
-      });
-    });
-  }
-
-  // ---------- Seguimiento de estudiantes (Profesor) ----------
-  // Panel en vivo: avance, lecciones vistas, entradas y salidas, resultados, retroalimentación,
-  // mensajes y reportes. Todo se actualiza solo cuando un estudiante avanza, entra o responde.
+  // ---------- Espacio de trabajo del Profesor ----------
+  // Cada curso del profesor se abre en un espacio con pestañas:
+  // Resumen, Estudiantes, Evaluación del curso, Mensajes y Estructura.
+  // Todo se actualiza solo cuando un estudiante avanza, entra, responde o escribe.
 
   const SEG_DIAS_ALERTA = 7;
+  const E = (t) => escaparHtmlImp(t === undefined || t === null ? '' : t);
 
   function segFecha(ts){
     return ts ? new Date(ts).toLocaleString('es-PA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
   }
+  function segFechaDia(str){
+    if (!str) return '';
+    const d = new Date(str + 'T12:00:00');
+    return isNaN(d) ? '' : d.toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
   function segHaceCuanto(ts){
-    if (!ts) return 'nunca';
+    if (!ts) return 'sin registro';
     const m = Math.floor((Date.now() - ts) / 60000);
     if (m < 1) return 'ahora mismo';
     if (m < 60) return 'hace ' + m + ' min';
@@ -4993,7 +4940,7 @@ Contenido del subtema.
   const SEG_NIVEL_ORDEN = { tema: 1, modulo: 2, curso: 3 };
 
   // Nota del curso con la misma fórmula que ve el Administrador
-  function segNotaCurso(est, curso, resultadosEst, segundos){
+  function segNotaCurso(curso, resultadosEst, segundos){
     const pp = curso.pesoPermanencia ?? 20, pt = curso.pesoTemas ?? 20, pm = curso.pesoModulo ?? 30, pf = curso.pesoFinal ?? 30;
     const horasMin = curso.horasMinimas || 1;
     const permanenciaPct = Math.min(100, ((segundos / 3600) / horasMin) * 100);
@@ -5002,7 +4949,9 @@ Contenido del subtema.
       return l.length ? l.reduce((a, r) => a + (r.puntaje || 0), 0) / l.length : 0;
     };
     const nota = Math.round((pp / 100) * permanenciaPct + (pt / 100) * prom('tema') + (pm / 100) * prom('modulo') + (pf / 100) * prom('curso'));
-    return { nota, aprobado: nota >= 70, permanenciaPct, temasPct: prom('tema'), moduloPct: prom('modulo'), finalPct: prom('curso') };
+    const finalPresentado = resultadosEst.some(r => r.calificado && r.nivel === 'curso');
+    return { nota, aprobado: nota >= 70, finalPresentado, resultado: nota >= 70 ? 'Aprobado' : (finalPresentado ? 'No aprobado' : 'En curso'),
+      permanenciaPct, temasPct: prom('tema'), moduloPct: prom('modulo'), finalPct: prom('curso'), pesos: { pp, pt, pm, pf } };
   }
 
   function segMetricas(est, curso, S){
@@ -5016,10 +4965,11 @@ Contenido del subtema.
     const res = S.resultados.filter(r => r.uid === est.uid);
     const calificados = res.filter(r => r.calificado).sort((a, b) => (SEG_NIVEL_ORDEN[a.nivel] || 9) - (SEG_NIVEL_ORDEN[b.nivel] || 9));
     const retro = res.filter(r => !r.calificado);
-    const nota = segNotaCurso(est, curso, res, segundos);
-    // lecciones
+    const nota = segNotaCurso(curso, res, segundos);
     let leccionesTotal = 0, leccionesVistas = 0;
     const modulos = S.estr.map(mo => {
+      const todos = mo.temas.flatMap(te => te.subtemas);
+      const rango = { first: Math.min(...todos.map(x => x.first)), last: Math.max(...todos.map(x => x.last)) };
       const temas = mo.temas.map(te => {
         const subs = te.subtemas.filter(su => !String(su.id).startsWith('intro_')).map(su => {
           const completo = terminado || maxIdx > su.last;
@@ -5027,26 +4977,28 @@ Contenido del subtema.
           leccionesTotal++; if (completo) leccionesVistas++;
           return { nombre: su.nombre, completo, actual };
         });
-        return { nombre: te.nombre, id: te.id, subs };
+        return { nombre: te.nombre, subs };
       }).filter(te => te.subs.length > 0);
-      return { nombre: mo.nombre, temas };
+      return { nombre: mo.nombre, temas, rango };
     }).filter(mo => mo.temas.length > 0);
-    const ultimo = est.ultimoAcceso || 0;
+    // Última actividad: lo más reciente entre entrada, movimiento y último avance guardado
+    const ultimaTs = Math.max(est.ultimaActividad || 0, est.ultimoAcceso || 0, (pg && pg.actualizado) || 0);
+    const huboActividad = ultimaTs > 0 || segundos > 0 || maxIdx >= 0 || res.length > 0 || (est.totalAccesos || 0) > 0;
     const enLinea = !!est.ultimaActividad && (Date.now() - est.ultimaActividad) < 3 * 60 * 1000 && (!est.ultimaSalida || est.ultimaActividad > est.ultimaSalida);
-    const diasSin = ultimo ? Math.floor((Date.now() - (est.ultimaActividad || ultimo)) / 86400000) : null;
+    const diasSin = ultimaTs ? Math.floor((Date.now() - ultimaTs) / 86400000) : null;
     const fallidos = calificados.filter(r => r.aprobado === false);
     const estados = [];
     let atencion = false;
-    if (!ultimo && !(est.totalAccesos > 0)) { estados.push({ t: '⚪ Aún no ha ingresado', c: 'mal' }); atencion = true; }
-    else if (!enLinea && diasSin !== null && diasSin >= SEG_DIAS_ALERTA) { estados.push({ t: '🔴 Sin entrar hace ' + diasSin + ' días', c: 'mal' }); atencion = true; }
+    if (!huboActividad) { estados.push({ t: '⚪ Aún no ha ingresado', c: 'mal' }); atencion = true; }
+    else if (!enLinea && diasSin !== null && diasSin >= SEG_DIAS_ALERTA) { estados.push({ t: '🔴 Sin actividad hace ' + diasSin + ' días', c: 'mal' }); atencion = true; }
     if (fallidos.length) { estados.push({ t: '⚠️ No aprobó: ' + fallidos.map(r => r.titulo).slice(0, 2).join(', '), c: 'mal' }); atencion = true; }
     if (terminado && nota.aprobado) estados.push({ t: '🏅 Curso aprobado', c: 'ok' });
     else if (enLinea) estados.push({ t: '🟢 En línea ahora', c: 'ok' });
     if (!estados.length) estados.push({ t: '✔ Al día', c: 'ok' });
     const msgs = S.mensajes.filter(m => m.estudianteUid === est.uid);
     const sinLeer = msgs.filter(m => m.de === 'estudiante' && !m.leido).length;
-    return { total, terminado, maxIdx, pct, segundos, horas: segundos / 3600, calificados, retro, nota, modulos, leccionesTotal, leccionesVistas,
-      entradas: est.totalAccesos || 0, ultimoAcceso: ultimo, ultimaActividad: est.ultimaActividad || ultimo, enLinea, estados, atencion, sinLeer, msgs };
+    return { total, terminado, maxIdx, actualIdx, pct, segundos, horas: segundos / 3600, calificados, retro, nota, modulos, leccionesTotal, leccionesVistas,
+      entradas: est.totalAccesos || 0, ultimaTs, enLinea, estados, atencion, sinLeer, msgs, huboActividad };
   }
 
   async function segCargarSesiones(S, curso, uid){
@@ -5084,192 +5036,335 @@ Contenido del subtema.
     return '';
   }
 
-  function construirPanelSeguimiento(panel, curso, profesorUid){
-    panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Cargando seguimiento…</p>';
-    const S = { estudiantes: [], resultados: [], respuestas: [], mensajes: [], flat: [], estr: [], sesiones: {}, abiertos: new Set(), seleccion: new Set(), filtro: 'todos', borradores: {}, grupoAbierto: false, pendiente: false, listo: 0 };
-    let temporizador = null;
+  function segEstadoFechas(curso){
+    if (!curso.fechaInicio && !curso.fechaFin) return null;
+    const hoy = Date.now();
+    const ini = curso.fechaInicio ? new Date(curso.fechaInicio + 'T00:00:00').getTime() : null;
+    const fin = curso.fechaFin ? new Date(curso.fechaFin + 'T23:59:59').getTime() : null;
+    let texto = '', alerta = false;
+    if (ini && hoy < ini) texto = 'El curso empieza en ' + Math.ceil((ini - hoy) / 86400000) + ' día(s)';
+    else if (fin && hoy > fin) { texto = 'El curso ya terminó (hace ' + Math.floor((hoy - fin) / 86400000) + ' día(s))'; alerta = true; }
+    else if (fin) { const d = Math.ceil((fin - hoy) / 86400000); texto = 'Faltan ' + d + ' día(s) para que termine'; alerta = d <= 7; }
+    else texto = 'En marcha';
+    return { texto, alerta };
+  }
 
-    function programarRender(){
-      clearTimeout(temporizador);
-      temporizador = setTimeout(render, 250);
+  function construirEspacioCurso(raiz, curso, profesorUid){
+    const S = { curso, estudiantes: [], resultados: [], respuestas: [], mensajes: [], flat: [], estr: [], sesiones: {}, abiertos: new Set(), seleccion: new Set(),
+      filtro: 'todos', busqueda: '', borradores: {}, destino: 'todos', hiloAbierto: null, grupoAbierto: false, pendiente: false, listo: 0, tab: 'resumen', estructuraCargada: false };
+    let temporizador = null;
+    const TABS = [
+      { id: 'resumen', t: '📊 Resumen' }, { id: 'estudiantes', t: '👥 Estudiantes' }, { id: 'evaluacion', t: '🎓 Evaluación' },
+      { id: 'mensajes', t: '✉️ Mensajes' }, { id: 'estructura', t: '📚 Contenido' }
+    ];
+
+    raiz.innerHTML = '<div class="prof-tabs" data-zona="tabs"></div>' + TABS.map(x => '<div class="prof-pane" data-pane="' + x.id + '" style="display:none;"></div>').join('');
+    const tabsEl = raiz.querySelector('[data-zona="tabs"]');
+    const pane = (id) => raiz.querySelector('[data-pane="' + id + '"]');
+    pane('resumen').innerHTML = '<p class="est-ayuda">Cargando seguimiento…</p>';
+
+    function programarRender(){ clearTimeout(temporizador); temporizador = setTimeout(render, 250); }
+
+    function datosOrdenados(){
+      return S.estudiantes.map(est => ({ est, m: segMetricas(est, curso, S) }))
+        .sort((a, b) => (b.m.atencion - a.m.atencion) || String(a.est.nombre || '').localeCompare(String(b.est.nombre || '')));
+    }
+
+    function pintarTabs(datos){
+      const atencion = datos.filter(d => d.m.atencion).length;
+      const sinLeer = datos.reduce((a, d) => a + d.m.sinLeer, 0);
+      tabsEl.innerHTML = TABS.map(x => {
+        let ins = '';
+        if (x.id === 'estudiantes' && atencion) ins = '<span class="prof-tab-ins">' + atencion + '</span>';
+        if (x.id === 'mensajes' && sinLeer) ins = '<span class="prof-tab-ins">' + sinLeer + '</span>';
+        return '<button type="button" class="prof-tab' + (S.tab === x.id ? ' activa' : '') + '" data-act="tab" data-v="' + x.id + '">' + x.t + ins + '</button>';
+      }).join('');
+      TABS.forEach(x => { pane(x.id).style.display = S.tab === x.id ? 'block' : 'none'; });
     }
 
     function render(){
       if (S.listo < 3) return;
       const activo = document.activeElement;
-      if (panel.contains(activo) && (activo.tagName === 'TEXTAREA' || activo.tagName === 'INPUT')) { S.pendiente = true; return; }
+      if (raiz.contains(activo) && (activo.tagName === 'TEXTAREA' || (activo.tagName === 'INPUT' && activo.type !== 'checkbox') || activo.tagName === 'SELECT')) { S.pendiente = true; return; }
       S.pendiente = false;
-      panel.querySelectorAll('[data-borrador]').forEach(t => { S.borradores[t.dataset.borrador] = t.value; });
+      raiz.querySelectorAll('[data-borrador]').forEach(t => { S.borradores[t.dataset.borrador] = t.value; });
       const scroll = window.scrollY;
+      const datos = datosOrdenados();
+      pintarTabs(datos);
+      TABS.forEach(x => { if (x.id !== S.tab && x.id !== 'estructura') pane(x.id).innerHTML = ''; });
+      if (S.tab === 'resumen') pane('resumen').innerHTML = htmlResumen(datos);
+      else if (S.tab === 'estudiantes') pane('estudiantes').innerHTML = htmlEstudiantes(datos);
+      else if (S.tab === 'evaluacion') pane('evaluacion').innerHTML = htmlEvaluacion(datos);
+      else if (S.tab === 'mensajes') pane('mensajes').innerHTML = htmlMensajes(datos);
+      else if (S.tab === 'estructura') cargarEstructuraTab();
+      raiz.querySelectorAll('[data-borrador]').forEach(t => { if (S.borradores[t.dataset.borrador]) t.value = S.borradores[t.dataset.borrador]; });
+      const dest = raiz.querySelector('[data-zona="destino"]');
+      if (dest) dest.value = S.destino;
+      aplicarBusqueda();
+      window.scrollTo({ top: scroll });
+    }
 
-      const datos = S.estudiantes
-        .map(est => ({ est, m: segMetricas(est, curso, S) }))
-        .sort((a, b) => (b.m.atencion - a.m.atencion) || String(a.est.nombre || '').localeCompare(String(b.est.nombre || '')));
+    function aplicarBusqueda(){
+      const inp = raiz.querySelector('[data-zona="busqueda"]');
+      if (inp) inp.value = S.busqueda;
+      const q = S.busqueda.trim().toLowerCase();
+      raiz.querySelectorAll('.seg-est[data-nombre]').forEach(el => { el.style.display = !q || el.dataset.nombre.includes(q) ? '' : 'none'; });
+    }
+
+    // ---------- Pestaña: Resumen ----------
+    function htmlResumen(datos){
       const n = datos.length;
-      if (n === 0) { panel.innerHTML = '<p style="font-size:12.5px; color:#8493ab; margin:0;">Todavía no hay estudiantes matriculados en este curso.</p>'; return; }
-      const promAvance = Math.round(datos.reduce((a, d) => a + d.m.pct, 0) / n);
+      const promAvance = n ? Math.round(datos.reduce((a, d) => a + d.m.pct, 0) / n) : 0;
       const enLinea = datos.filter(d => d.m.enLinea).length;
-      const hoy = datos.filter(d => d.m.ultimaActividad && (Date.now() - d.m.ultimaActividad) < 86400000).length;
-      const atencion = datos.filter(d => d.m.atencion).length;
+      const activos = datos.filter(d => d.m.ultimaTs && (Date.now() - d.m.ultimaTs) < 86400000).length;
+      const atencion = datos.filter(d => d.m.atencion);
       const conNota = datos.filter(d => d.m.calificados.length > 0);
       const promNota = conNota.length ? Math.round(conNota.reduce((a, d) => a + d.m.calificados.reduce((x, r) => x + (r.puntaje || 0), 0) / d.m.calificados.length, 0) / conNota.length) : null;
-      const aprobaron = datos.filter(d => d.m.terminado && d.m.nota.aprobado).length;
-      const sinLeerTotal = datos.reduce((a, d) => a + d.m.sinLeer, 0);
-      const fallidas = segPreguntasMasFalladas(S);
-      const visibles = datos.filter(d => S.filtro === 'todos' || d.m.atencion);
-
-      let html = '';
-      html += '<div class="seg-resumen">' +
+      const aprobaron = datos.filter(d => d.m.nota.aprobado).length;
+      const sinLeer = datos.reduce((a, d) => a + d.m.sinLeer, 0);
+      const ef = segEstadoFechas(curso);
+      let h = '';
+      h += '<div class="seg-fechas"><div style="flex:1; min-width:200px;"><div style="font-weight:700; font-size:13px; color:var(--ink); margin-bottom:6px;">📅 Fechas del curso <span style="font-weight:400; font-size:11px; color:#8493ab;">(solo para tu control; en los reportes sale únicamente la fecha de inicio)</span></div>' +
+        '<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">' +
+        '<label style="font-size:11.5px; font-weight:600; color:var(--ink-soft);">Inicio<br><input type="date" data-fecha="inicio" value="' + E(curso.fechaInicio || '') + '" style="padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:13px;"></label>' +
+        '<label style="font-size:11.5px; font-weight:600; color:var(--ink-soft);">Finalización<br><input type="date" data-fecha="fin" value="' + E(curso.fechaFin || '') + '" style="padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:13px;"></label>' +
+        '<button type="button" class="seg-btn prim" data-act="guardar-fechas">Guardar fechas</button>' +
+        (S.fechasGuardadas && (Date.now() - S.fechasGuardadas) < 6000 ? '<span style="font-size:12px; color:var(--teal);">Guardado ✓</span>' : '') +
+        '</div>' + (ef ? '<div style="margin-top:8px;"><span class="seg-chip ' + (ef.alerta ? 'mal' : 'ok') + '">' + E(ef.texto) + '</span></div>' : '') + '</div></div>';
+      h += '<div class="seg-resumen">' +
         '<div class="seg-card"><b>' + n + '</b><span>Estudiantes</span></div>' +
         '<div class="seg-card"><b>' + promAvance + '%</b><span>Avance promedio</span></div>' +
         '<div class="seg-card"><b>' + enLinea + '</b><span>En línea ahora</span></div>' +
-        '<div class="seg-card"><b>' + hoy + '</b><span>Activos en 24 h</span></div>' +
-        '<div class="seg-card' + (atencion ? ' alerta' : '') + '"><b>' + atencion + '</b><span>Necesitan atención</span></div>' +
+        '<div class="seg-card"><b>' + activos + '</b><span>Activos en 24 h</span></div>' +
+        '<div class="seg-card' + (atencion.length ? ' alerta' : '') + '"><b>' + atencion.length + '</b><span>Necesitan atención</span></div>' +
         '<div class="seg-card"><b>' + (promNota === null ? '-' : promNota) + '</b><span>Promedio de evaluaciones</span></div>' +
         '<div class="seg-card"><b>' + aprobaron + '</b><span>Curso aprobado</span></div>' +
-        '<div class="seg-card' + (sinLeerTotal ? ' alerta' : '') + '"><b>' + sinLeerTotal + '</b><span>Mensajes sin leer</span></div>' +
-        '</div>';
+        '<div class="seg-card' + (sinLeer ? ' alerta' : '') + '"><b>' + sinLeer + '</b><span>Mensajes sin leer</span></div></div>';
+      if (n === 0) return h + '<p class="est-ayuda">Todavía no hay estudiantes matriculados en este curso.</p>';
 
-      if (fallidas.length) {
-        html += '<details style="margin-bottom:10px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 10px;"><summary style="cursor:pointer; font-weight:700; font-size:12.5px; color:var(--ink);">🎯 Preguntas que más se fallan (para reforzar en clase)</summary><ol style="margin:8px 0 0; padding-left:18px; font-size:12.5px; line-height:1.5;">' +
-          fallidas.map(f => '<li>' + escaparHtmlImp(f.enunciado) + ' <span class="seg-chip mal">' + f.n + ' error' + (f.n === 1 ? '' : 'es') + '</span>' + (f.correcta ? '<div style="color:var(--teal); font-size:11.5px;">Correcta: ' + escaparHtmlImp(f.correcta) + '</div>' : '') + '</li>').join('') +
-          '</ol></details>';
-      }
+      h += '<div class="seg-bloque"><h6>⚠️ Necesitan atención</h6>' + (atencion.length === 0 ? '<p class="est-ayuda" style="margin:0;">Todos van al día. 👏</p>' :
+        atencion.map(d => '<div class="seg-fila-aviso"><div><b>' + E(d.est.nombre || d.est.email) + '</b><div style="margin-top:3px;">' + d.m.estados.filter(e => e.c === 'mal').map(e => '<span class="seg-chip mal">' + E(e.t) + '</span>').join('') + '</div></div>' +
+          '<div style="display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="seg-btn" data-act="escribir" data-uid="' + d.est.uid + '">✉️ Escribir</button><button type="button" class="seg-btn" data-act="ir-detalle" data-uid="' + d.est.uid + '">Ver</button></div></div>').join('')) + '</div>';
 
-      html += '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px;">' +
+      // Estudiantes por módulo
+      const filasMod = S.estr.map(mo => {
+        const todos = mo.temas.flatMap(te => te.subtemas);
+        const first = Math.min(...todos.map(x => x.first)), last = Math.max(...todos.map(x => x.last));
+        const aqui = datos.filter(d => d.m.huboActividad && !d.m.terminado && d.m.maxIdx >= first && d.m.maxIdx <= last).length;
+        return { nombre: mo.nombre, aqui, ultimo: last };
+      });
+      const terminaron = datos.filter(d => d.m.terminado).length;
+      h += '<div class="seg-bloque"><h6>🗺️ ¿Dónde van los estudiantes?</h6>' + filasMod.map(f => '<div class="seg-fila-mod"><span>' + E(f.nombre) + '</span><span class="seg-chip' + (f.aqui ? ' ok' : '') + '">' + f.aqui + ' estudiante' + (f.aqui === 1 ? '' : 's') + '</span></div>').join('') +
+        '<div class="seg-fila-mod"><span>🏁 Terminaron todas las lecciones</span><span class="seg-chip' + (terminaron ? ' ok' : '') + '">' + terminaron + '</span></div></div>';
+
+      const fallidas = segPreguntasMasFalladas(S);
+      h += '<div class="seg-bloque"><h6>🎯 Preguntas que más se fallan (para reforzar en clase)</h6>' + (fallidas.length === 0 ? '<p class="est-ayuda" style="margin:0;">Todavía no hay errores registrados.</p>' :
+        '<ol style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.5;">' + fallidas.map(f => '<li>' + E(f.enunciado) + ' <span class="seg-chip mal">' + f.n + ' error' + (f.n === 1 ? '' : 'es') + '</span>' + (f.correcta ? '<div style="color:var(--teal); font-size:11.5px;">Correcta: ' + E(f.correcta) + '</div>' : '') + '</li>').join('') + '</ol>') + '</div>';
+      return h;
+    }
+
+    // ---------- Pestaña: Estudiantes ----------
+    function barraAcciones(nSel){
+      return '<div class="seg-acciones"><span style="font-size:12px; font-weight:700; color:var(--ink);">Con los ' + nSel + ' seleccionado' + (nSel === 1 ? '' : 's') + ':</span>' +
+        '<button type="button" class="seg-btn" data-act="ir-mensajes-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>✉️ Mensaje</button>' +
+        '<button type="button" class="seg-btn" data-act="reporte-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>📄 Reporte de seguimiento</button>' +
+        '<button type="button" class="seg-btn" data-act="informe-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>🎓 Informe de evaluación</button>' +
+        '<button type="button" class="seg-btn" data-act="csv-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>⬇️ Excel</button></div>';
+    }
+
+    function htmlEstudiantes(datos){
+      const n = datos.length;
+      if (n === 0) return '<p class="est-ayuda">Todavía no hay estudiantes matriculados en este curso.</p>';
+      const atencion = datos.filter(d => d.m.atencion).length;
+      const visibles = datos.filter(d => S.filtro === 'todos' || d.m.atencion);
+      let h = '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px;">' +
+        '<input type="search" data-zona="busqueda" placeholder="🔎 Buscar estudiante..." style="flex:1; min-width:150px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px;">' +
         '<button type="button" class="seg-btn' + (S.filtro === 'todos' ? ' prim' : '') + '" data-act="filtro" data-v="todos">Todos (' + n + ')</button>' +
-        '<button type="button" class="seg-btn' + (S.filtro === 'atencion' ? ' prim' : '') + '" data-act="filtro" data-v="atencion">⚠️ Necesitan atención (' + atencion + ')</button>' +
-        '<span style="flex:1;"></span>' +
-        '<button type="button" class="seg-btn" data-act="todos-sel">☑️ Seleccionar todos</button>' +
-        '<button type="button" class="seg-btn" data-act="ninguno-sel">Quitar selección</button>' +
-        '</div>';
-
-      const nSel = S.seleccion.size;
-      html += '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; padding:8px; background:#fffaf0; border:1px solid var(--amber); border-radius:10px;">' +
-        '<span style="font-size:12px; font-weight:700; color:var(--ink);">Con los ' + nSel + ' seleccionado' + (nSel === 1 ? '' : 's') + ':</span>' +
-        '<button type="button" class="seg-btn" data-act="msg-grupo"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>✉️ Enviar mensaje</button>' +
-        '<button type="button" class="seg-btn" data-act="reporte-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>📄 Reporte</button>' +
-        '<button type="button" class="seg-btn" data-act="csv-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>⬇️ Excel (CSV)</button>' +
-        '<button type="button" class="seg-btn" data-act="reporte-todos">📄 Reporte de todo el curso</button>' +
-        '</div>';
-
-      if (S.grupoAbierto && nSel) {
-        html += '<div style="margin-bottom:10px; padding:10px; background:#fff; border:1px solid var(--line); border-radius:10px;">' +
-          '<div style="font-size:12.5px; font-weight:700; margin-bottom:6px;">Mensaje para ' + nSel + ' estudiante' + (nSel === 1 ? '' : 's') + '</div>' +
-          '<textarea rows="3" data-borrador="grupo" placeholder="Escribe el mensaje..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:\'Inter\', sans-serif; resize:vertical;"></textarea>' +
-          '<div style="margin-top:6px; display:flex; gap:6px;"><button type="button" class="seg-btn prim" data-act="enviar-grupo">Enviar</button><button type="button" class="seg-btn" data-act="cancelar-grupo">Cancelar</button></div></div>';
-      }
-
-      if (visibles.length === 0) html += '<p style="font-size:12.5px; color:#8493ab;">Ningún estudiante necesita atención por ahora. 👏</p>';
-
-      html += visibles.map(({ est, m }) => {
+        '<button type="button" class="seg-btn' + (S.filtro === 'atencion' ? ' prim' : '') + '" data-act="filtro" data-v="atencion">⚠️ Atención (' + atencion + ')</button>' +
+        '<button type="button" class="seg-btn" data-act="todos-sel">☑️ Todos</button>' +
+        '<button type="button" class="seg-btn" data-act="ninguno-sel">Ninguno</button></div>';
+      h += barraAcciones(S.seleccion.size);
+      if (visibles.length === 0) h += '<p class="est-ayuda">Ningún estudiante necesita atención por ahora. 👏</p>';
+      h += visibles.map(({ est, m }) => {
         const abierto = S.abiertos.has(est.uid);
-        return '<div class="seg-est' + (m.atencion ? ' atencion' : '') + '">' +
+        const nt = m.nota;
+        return '<div class="seg-est' + (m.atencion ? ' atencion' : '') + '" data-nombre="' + E(String(est.nombre || '').toLowerCase()) + '">' +
           '<div style="display:flex; gap:8px; align-items:flex-start;">' +
             '<input type="checkbox" data-act="sel" data-uid="' + est.uid + '"' + (S.seleccion.has(est.uid) ? ' checked' : '') + ' style="margin-top:3px; width:auto;">' +
             '<div style="flex:1; min-width:0;">' +
               '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">' +
-                '<div><div style="font-weight:700; font-size:13.5px; color:var(--ink);">' + escaparHtmlImp(est.nombre || est.email || '(sin nombre)') + '</div>' +
-                '<div style="font-size:11px; color:#8493ab;">' + (est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula') + ': ' + escaparHtmlImp(est.numeroDocumento || '-') + '</div></div>' +
-                '<div style="text-align:right;"><div style="font-size:16px; font-weight:700; color:' + (m.nota.aprobado ? 'var(--teal)' : 'var(--ink)') + ';">' + m.nota.nota + '/100</div><div style="font-size:10.5px; color:#8493ab;">nota del curso</div></div>' +
+                '<div><div style="font-weight:700; font-size:13.5px; color:var(--ink);">' + E(est.nombre || est.email || '(sin nombre)') + '</div>' +
+                '<div style="font-size:11px; color:#8493ab;">' + (est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula') + ': ' + E(est.numeroDocumento || '-') + '</div></div>' +
+                '<div style="text-align:right;"><div style="font-size:16px; font-weight:700; color:' + (nt.aprobado ? 'var(--teal)' : 'var(--ink)') + ';">' + nt.nota + '/100</div><div style="font-size:10.5px; color:#8493ab;">evaluación total · ' + nt.resultado + '</div></div>' +
               '</div>' +
-              '<div style="margin:6px 0;">' + m.estados.map(e => '<span class="seg-chip ' + e.c + '">' + escaparHtmlImp(e.t) + '</span>').join('') + (m.sinLeer ? '<span class="seg-chip mal">💬 ' + m.sinLeer + ' mensaje' + (m.sinLeer === 1 ? '' : 's') + ' nuevo' + (m.sinLeer === 1 ? '' : 's') + '</span>' : '') + '</div>' +
+              '<div style="margin:6px 0;">' + m.estados.map(e => '<span class="seg-chip ' + e.c + '">' + E(e.t) + '</span>').join('') + (m.sinLeer ? '<span class="seg-chip mal">💬 ' + m.sinLeer + ' nuevo' + (m.sinLeer === 1 ? '' : 's') + '</span>' : '') + '</div>' +
               '<div style="display:flex; align-items:center; gap:8px;"><div class="seg-barra" style="flex:1;"><div style="width:' + m.pct + '%;"></div></div><b style="font-size:12px;">' + m.pct + '%</b></div>' +
-              '<div style="font-size:11.5px; color:#5b6b87; margin-top:6px; line-height:1.6;">📖 ' + m.leccionesVistas + ' de ' + m.leccionesTotal + ' lecciones · ⏱️ ' + formatearHorasMinutos(m.segundos) + ' de ' + (curso.horasMinimas || 0) + ' h · 🔑 ' + m.entradas + ' entrada' + (m.entradas === 1 ? '' : 's') + ' · 🕒 ' + segHaceCuanto(m.ultimaActividad) + '</div>' +
+              '<div style="font-size:11.5px; color:#5b6b87; margin-top:6px; line-height:1.6;">📖 ' + m.leccionesVistas + ' de ' + m.leccionesTotal + ' lecciones · ⏱️ ' + formatearHorasMinutos(m.segundos) + ' de ' + (curso.horasMinimas || 0) + ' h · 🔑 ' + (m.entradas ? m.entradas + ' entrada' + (m.entradas === 1 ? '' : 's') : 'entradas: se registran desde su próximo ingreso') + ' · 🕒 última actividad ' + segHaceCuanto(m.ultimaTs) + '</div>' +
               '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">' +
                 '<button type="button" class="seg-btn' + (abierto ? ' prim' : '') + '" data-act="detalle" data-uid="' + est.uid + '">' + (abierto ? 'Ocultar detalle ▴' : 'Ver detalle ▾') + '</button>' +
+                '<button type="button" class="seg-btn" data-act="escribir" data-uid="' + est.uid + '">✉️ Escribir</button>' +
                 '<button type="button" class="seg-btn" data-act="reporte-uno" data-uid="' + est.uid + '">📄 Reporte</button>' +
               '</div>' +
               (abierto ? '<div class="seg-detalle">' + detalleHtml(est, m) + '</div>' : '') +
             '</div></div></div>';
       }).join('');
-
-      panel.innerHTML = html;
-      panel.querySelectorAll('[data-borrador]').forEach(t => { if (S.borradores[t.dataset.borrador]) t.value = S.borradores[t.dataset.borrador]; });
-      window.scrollTo({ top: scroll });
+      return h;
     }
 
     function detalleHtml(est, m){
-      let h = '';
-      // 1. Lecciones
+      const nt = m.nota;
+      let h = '<h6>🎓 Evaluación total del curso: <span style="color:' + (nt.aprobado ? 'var(--teal)' : 'var(--danger)') + ';">' + nt.nota + '/100 · ' + nt.resultado + '</span></h6>' +
+        '<table class="seg-tabla"><tr><th>Componente</th><th>Peso</th><th>Resultado</th></tr>' +
+        '<tr><td>Permanencia (' + (m.horas).toFixed(1) + ' de ' + (curso.horasMinimas || 0) + ' h)</td><td>' + nt.pesos.pp + '%</td><td>' + Math.round(nt.permanenciaPct) + '%</td></tr>' +
+        '<tr><td>Exámenes de los temas</td><td>' + nt.pesos.pt + '%</td><td>' + Math.round(nt.temasPct) + '%</td></tr>' +
+        '<tr><td>Exámenes de módulo</td><td>' + nt.pesos.pm + '%</td><td>' + Math.round(nt.moduloPct) + '%</td></tr>' +
+        '<tr><td>Examen final del curso</td><td>' + nt.pesos.pf + '%</td><td>' + Math.round(nt.finalPct) + '%</td></tr></table>';
       h += '<h6>📚 Lo que ha visto</h6>';
       if (m.modulos.length === 0) h += '<p style="color:#8493ab; margin:0;">Este curso todavía no tiene lecciones.</p>';
       h += m.modulos.map(mo => {
         const hechas = mo.temas.reduce((a, te) => a + te.subs.filter(s => s.completo).length, 0);
         const tot = mo.temas.reduce((a, te) => a + te.subs.length, 0);
-        return '<details style="margin-bottom:4px;"><summary style="cursor:pointer; font-weight:600;">' + escaparHtmlImp(mo.nombre) + ' <span class="seg-chip' + (hechas === tot ? ' ok' : '') + '">' + hechas + '/' + tot + '</span></summary><div style="padding-left:12px;">' +
-          mo.temas.map(te => '<div style="font-weight:600; color:var(--ink-soft); margin-top:4px;">' + escaparHtmlImp(te.nombre) + '</div>' +
-            te.subs.map(su => '<div style="padding-left:8px;">' + (su.actual ? '▶' : (su.completo ? '✅' : '⬜')) + ' ' + escaparHtmlImp(su.nombre) + (su.actual ? ' <span class="seg-chip">está aquí</span>' : '') + '</div>').join('')).join('') +
+        return '<details style="margin-bottom:4px;"><summary style="cursor:pointer; font-weight:600;">' + E(mo.nombre) + ' <span class="seg-chip' + (hechas === tot ? ' ok' : '') + '">' + hechas + '/' + tot + '</span></summary><div style="padding-left:12px;">' +
+          mo.temas.map(te => '<div style="font-weight:600; color:var(--ink-soft); margin-top:4px;">' + E(te.nombre) + '</div>' +
+            te.subs.map(su => '<div style="padding-left:8px;">' + (su.actual ? '▶' : (su.completo ? '✅' : '⬜')) + ' ' + E(su.nombre) + (su.actual ? ' <span class="seg-chip">está aquí</span>' : '') + '</div>').join('')).join('') +
           '</div></details>';
       }).join('');
 
-      // 2. Entradas y salidas
       h += '<h6>🔑 Entradas y salidas</h6>';
       const ses = S.sesiones[est.uid];
       if (!ses) {
         h += '<p style="color:#8493ab; margin:0;">Cargando…</p>';
         segCargarSesiones(S, curso, est.uid).then(() => programarRender());
       } else if (ses.length === 0) {
-        h += '<p style="color:#8493ab; margin:0;">Todavía no hay entradas registradas (se empiezan a registrar desde esta versión).</p>';
+        h += '<p style="color:#8493ab; margin:0;">Todavía no hay entradas registradas. Se anotan desde el próximo ingreso del estudiante.</p>';
       } else {
         h += '<table class="seg-tabla"><tr><th>Entró</th><th>Salió</th><th>Duración</th></tr>' +
-          ses.slice(0, 12).map(x => {
-            const fin = x.fin || x.ultimo || x.inicio;
-            return '<tr><td>' + segFecha(x.inicio) + '</td><td>' + segFecha(fin) + (x.fin ? '' : ' <span style="color:#8493ab;">(aprox.)</span>') + '</td><td>' + segDuracion(fin - x.inicio) + '</td></tr>';
-          }).join('') + '</table>' +
+          ses.slice(0, 12).map(x => { const fin = x.fin || x.ultimo || x.inicio; return '<tr><td>' + segFecha(x.inicio) + '</td><td>' + segFecha(fin) + (x.fin ? '' : ' <span style="color:#8493ab;">(aprox.)</span>') + '</td><td>' + segDuracion(fin - x.inicio) + '</td></tr>'; }).join('') + '</table>' +
           (ses.length > 12 ? '<div style="color:#8493ab; font-size:11px; margin-top:3px;">Se muestran las últimas 12 de ' + ses.length + ' entradas.</div>' : '');
       }
 
-      // 3. Evaluaciones
-      h += '<h6>📝 Evaluaciones con nota</h6>';
-      h += m.calificados.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha presentado evaluaciones.</p>' :
-        '<table class="seg-tabla">' + m.calificados.map(r => {
-          const falladas = (r.detalle || []).filter(d => d && d.esCorrecta === false);
-          return '<tr><td>' + escaparHtmlImp(r.titulo || '') + '<div style="color:#8493ab; font-size:11px;">' + (SEG_NIVEL[r.nivel] || '') + (r.fecha && r.fecha.toMillis ? ' · ' + segFecha(r.fecha.toMillis()) : '') + '</div>' +
-            (falladas.length ? '<details><summary style="cursor:pointer; color:var(--danger); font-size:11.5px;">Ver ' + falladas.length + ' pregunta' + (falladas.length === 1 ? '' : 's') + ' fallada' + (falladas.length === 1 ? '' : 's') + '</summary>' + falladas.map(d => '<div style="font-size:11.5px; margin:3px 0;">• ' + escaparHtmlImp(d.enunciado || '') + '<br><span style="color:#b3261e;">Respondió: ' + escaparHtmlImp(d.respuestaElegidaTexto || '-') + '</span> · <span style="color:var(--teal);">Correcta: ' + escaparHtmlImp(d.respuestaCorrectaTexto || '-') + '</span></div>').join('') + '</details>' : '') +
-            '</td><td style="white-space:nowrap; font-weight:700; color:' + (r.aprobado ? 'var(--teal)' : 'var(--danger)') + ';">' + r.puntaje + '/100<br>' + (r.aprobado ? '✓ Aprobado' : '✗ No aprobado') + '</td></tr>';
-        }).join('') + '</table>';
+      const filaResultado = (r, conNota) => {
+        const falladas = (r.detalle || []).filter(d => d && d.esCorrecta === false);
+        return '<tr><td>' + E(r.titulo || '') + '<div style="color:#8493ab; font-size:11px;">' + (SEG_NIVEL[r.nivel] || '') + (r.fecha && r.fecha.toMillis ? ' · ' + segFecha(r.fecha.toMillis()) : '') + '</div>' +
+          (falladas.length ? '<details><summary style="cursor:pointer; color:var(--danger); font-size:11.5px;">Ver ' + falladas.length + ' pregunta' + (falladas.length === 1 ? '' : 's') + ' fallada' + (falladas.length === 1 ? '' : 's') + '</summary>' + falladas.map(d => '<div style="font-size:11.5px; margin:3px 0;">• ' + E(d.enunciado || '') + '<br><span style="color:#b3261e;">Respondió: ' + E(d.respuestaElegidaTexto || '-') + '</span> · <span style="color:var(--teal);">Correcta: ' + E(d.respuestaCorrectaTexto || '-') + '</span></div>').join('') + '</details>' : '') +
+          '</td><td style="white-space:nowrap; font-weight:700; color:' + (conNota ? (r.aprobado ? 'var(--teal)' : 'var(--danger)') : 'var(--ink)') + ';">' + r.puntaje + '/100' + (conNota ? '<br>' + (r.aprobado ? '✓ Aprobado' : '✗ No aprobado') : '') + '</td></tr>';
+      };
+      h += '<h6>📝 Evaluaciones con nota</h6>' + (m.calificados.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha presentado evaluaciones.</p>' : '<table class="seg-tabla">' + m.calificados.map(r => filaResultado(r, true)).join('') + '</table>');
+      h += '<h6>🔎 Pruebas de retroalimentación (sin nota)</h6>' + (m.retro.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha hecho pruebas de retroalimentación.</p>' : '<table class="seg-tabla">' + m.retro.map(r => filaResultado(r, false)).join('') + '</table>');
 
-      // 4. Retroalimentación
-      h += '<h6>🔎 Pruebas de retroalimentación (sin nota)</h6>';
-      h += m.retro.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha hecho pruebas de retroalimentación.</p>' :
-        '<table class="seg-tabla">' + m.retro.map(r => {
-          const falladas = (r.detalle || []).filter(d => d && d.esCorrecta === false);
-          return '<tr><td>' + escaparHtmlImp(r.titulo || '') +
-            (falladas.length ? '<details><summary style="cursor:pointer; color:var(--danger); font-size:11.5px;">Qué falló (' + falladas.length + ')</summary>' + falladas.map(d => '<div style="font-size:11.5px; margin:3px 0;">• ' + escaparHtmlImp(d.enunciado || '') + '<br><span style="color:var(--teal);">Correcta: ' + escaparHtmlImp(d.respuestaCorrectaTexto || '-') + '</span></div>').join('') + '</details>' : '') +
-            '</td><td style="white-space:nowrap; font-weight:700;">' + r.puntaje + '/100</td></tr>';
-        }).join('') + '</table>';
-
-      // 5. Actividades
       const resp = S.respuestas.filter(r => r.uid === est.uid);
       h += '<h6>💭 Reflexiones y actividades entregadas</h6>';
       h += resp.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no ha entregado ninguna.</p>' :
-        resp.map(r => '<div style="padding:6px 8px; background:var(--paper); border-radius:8px; margin-bottom:5px;"><div style="font-weight:600;">' + (r.nivel === 'tema' ? '📝 Actividad de aprendizaje' : '💭 Reflexión') + ': ' + escaparHtmlImp(segTituloNivel(S, r.nivel, r.nivelId) || '') + '</div>' +
-          (r.respuestaTexto ? '<div style="white-space:pre-wrap;">' + escaparHtmlImp(r.respuestaTexto) + '</div>' : '') +
-          (r.enlaceDocumento ? '<div><a href="' + escaparHtmlImp(r.enlaceDocumento) + '" target="_blank" rel="noopener">🔗 Documento adjunto</a></div>' : '') + '</div>').join('');
+        resp.map(r => '<div style="padding:6px 8px; background:var(--paper); border-radius:8px; margin-bottom:5px;"><div style="font-weight:600;">' + (r.nivel === 'tema' ? '📝 Actividad de aprendizaje' : '💭 Reflexión') + ': ' + E(segTituloNivel(S, r.nivel, r.nivelId) || '') + '</div>' +
+          (r.respuestaTexto ? '<div style="white-space:pre-wrap;">' + E(r.respuestaTexto) + '</div>' : '') +
+          (r.enlaceDocumento ? '<div><a href="' + E(r.enlaceDocumento) + '" target="_blank" rel="noopener">🔗 Documento adjunto</a></div>' : '') + '</div>').join('');
+      return h;
+    }
 
-      // 6. Mensajes
-      h += '<h6>✉️ Conversación con ' + escaparHtmlImp(est.nombre || 'el estudiante') + '</h6>';
-      h += '<div class="msg-hilo">' + (m.msgs.length === 0 ? '<p style="color:#8493ab; margin:0;">Todavía no hay mensajes.</p>' :
-        m.msgs.map(x => '<div class="msg-burbuja ' + (x.de === 'profesor' ? 'estudiante' : 'profesor') + '">' + escaparHtmlImp(x.texto || '') + '<small>' + (x.de === 'profesor' ? 'Tú' : escaparHtmlImp(x.deNombre || 'Estudiante')) + ' · ' + segFecha(x.creado) + '</small></div>').join('')) + '</div>' +
-        '<textarea rows="2" data-borrador="m_' + est.uid + '" placeholder="Escribe un mensaje para este estudiante..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:\'Inter\', sans-serif; resize:vertical;"></textarea>' +
-        '<button type="button" class="seg-btn prim" style="margin-top:6px;" data-act="enviar" data-uid="' + est.uid + '">Enviar mensaje</button>';
+    // ---------- Pestaña: Evaluación del curso ----------
+    function htmlEvaluacion(datos){
+      if (datos.length === 0) return '<p class="est-ayuda">Todavía no hay estudiantes matriculados en este curso.</p>';
+      const nSel = S.seleccion.size;
+      const pp = curso.pesoPermanencia ?? 20, pt = curso.pesoTemas ?? 20, pm = curso.pesoModulo ?? 30, pf = curso.pesoFinal ?? 30;
+      let h = '<p class="est-ayuda">Evaluación total de cada estudiante. Marca los que quieras incluir y pulsa <b>Imprimir informe</b>. Nota del curso = permanencia ' + pp + '% + exámenes de temas ' + pt + '% + módulo ' + pm + '% + final ' + pf + '%. Mínimo para aprobar: 70/100.</p>';
+      h += '<div class="seg-acciones"><span style="font-size:12px; font-weight:700; color:var(--ink);">' + nSel + ' seleccionado' + (nSel === 1 ? '' : 's') + '</span>' +
+        '<button type="button" class="seg-btn" data-act="todos-sel">☑️ Todos</button><button type="button" class="seg-btn" data-act="ninguno-sel">Ninguno</button>' +
+        '<button type="button" class="seg-btn prim" data-act="informe-sel"' + (nSel ? '' : ' disabled style="opacity:.5;"') + '>🖨️ Imprimir informe de los seleccionados</button>' +
+        '<button type="button" class="seg-btn" data-act="informe-todos">🖨️ Informe de todo el curso</button>' +
+        '<button type="button" class="seg-btn" data-act="csv-todos">⬇️ Excel</button></div>';
+      h += '<div style="overflow-x:auto;"><table class="seg-tabla seg-tabla-eval"><tr><th></th><th>Estudiante</th><th>Permanencia</th><th>Temas</th><th>Módulo</th><th>Final</th><th>Nota total</th><th>Resultado</th></tr>' +
+        datos.slice().sort((a, b) => String(a.est.nombre || '').localeCompare(String(b.est.nombre || ''))).map(({ est, m }) => {
+          const nt = m.nota;
+          return '<tr><td><input type="checkbox" data-act="sel" data-uid="' + est.uid + '"' + (S.seleccion.has(est.uid) ? ' checked' : '') + ' style="width:auto;"></td>' +
+            '<td><b>' + E(est.nombre || '') + '</b><div style="font-size:10.5px; color:#8493ab;">' + E(est.numeroDocumento || '-') + '</div></td>' +
+            '<td>' + Math.round(nt.permanenciaPct) + '%</td><td>' + Math.round(nt.temasPct) + '%</td><td>' + Math.round(nt.moduloPct) + '%</td><td>' + Math.round(nt.finalPct) + '%</td>' +
+            '<td><b style="font-size:14px;">' + nt.nota + '</b>/100</td>' +
+            '<td><span class="seg-chip ' + (nt.aprobado ? 'ok' : (nt.finalPresentado ? 'mal' : '')) + '">' + nt.resultado + '</span></td></tr>';
+        }).join('') + '</table></div>';
+      return h;
+    }
+
+    // ---------- Pestaña: Mensajes ----------
+    function htmlMensajes(datos){
+      if (datos.length === 0) return '<p class="est-ayuda">Todavía no hay estudiantes matriculados en este curso.</p>';
+      const nSel = S.seleccion.size;
+      let h = '<div class="seg-bloque"><h6>✍️ Nuevo mensaje</h6>' +
+        '<label style="font-size:11.5px; font-weight:600; color:var(--ink-soft);">¿Para quién?</label>' +
+        '<select data-zona="destino" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; margin:4px 0 8px; background:#fff;">' +
+        '<option value="todos">👥 Todo el curso (' + datos.length + ' estudiantes)</option>' +
+        '<option value="sel"' + (nSel ? '' : ' disabled') + '>☑️ Los estudiantes que seleccioné (' + nSel + ')</option>' +
+        '<option value="atencion">⚠️ Solo los que necesitan atención (' + datos.filter(d => d.m.atencion).length + ')</option>' +
+        '<optgroup label="Un estudiante">' + datos.slice().sort((a, b) => String(a.est.nombre || '').localeCompare(String(b.est.nombre || ''))).map(d => '<option value="u:' + d.est.uid + '">' + E(d.est.nombre || d.est.email) + '</option>').join('') + '</optgroup></select>' +
+        '<textarea rows="3" data-borrador="nuevo" placeholder="Escribe el mensaje..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:\'Inter\', sans-serif; resize:vertical;"></textarea>' +
+        '<button type="button" class="seg-btn prim" style="margin-top:6px;" data-act="enviar-nuevo">Enviar mensaje</button>' +
+        '<span style="font-size:11px; color:#8493ab; margin-left:8px;">Cada estudiante lo recibe en su pantalla del curso y puede responderte.</span></div>';
+      const conMsgs = datos.filter(d => d.m.msgs.length > 0).sort((a, b) => (b.m.msgs[b.m.msgs.length - 1].creado || 0) - (a.m.msgs[a.m.msgs.length - 1].creado || 0));
+      h += '<div class="seg-bloque"><h6>💬 Conversaciones</h6>' + (conMsgs.length === 0 ? '<p class="est-ayuda" style="margin:0;">Todavía no hay conversaciones. Escribe tu primer mensaje arriba.</p>' :
+        conMsgs.map(({ est, m }) => {
+          const ultimo = m.msgs[m.msgs.length - 1];
+          const abierto = S.hiloAbierto === est.uid;
+          return '<div class="seg-hilo-item' + (m.sinLeer ? ' nuevo' : '') + '"><div style="display:flex; justify-content:space-between; gap:8px; align-items:center; cursor:pointer;" data-act="hilo" data-uid="' + est.uid + '">' +
+            '<div style="min-width:0;"><b>' + E(est.nombre || est.email) + '</b>' + (m.sinLeer ? ' <span class="seg-chip mal">' + m.sinLeer + ' nuevo' + (m.sinLeer === 1 ? '' : 's') + '</span>' : '') +
+            '<div style="font-size:11.5px; color:#6b7b95; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + (ultimo.de === 'profesor' ? 'Tú: ' : '') + E(ultimo.texto || '') + '</div></div>' +
+            '<span style="font-size:11px; color:#8493ab; white-space:nowrap;">' + segHaceCuanto(ultimo.creado) + ' ' + (abierto ? '▴' : '▾') + '</span></div>' +
+            (abierto ? '<div style="margin-top:8px;"><div class="msg-hilo">' + m.msgs.map(x => '<div class="msg-burbuja ' + (x.de === 'profesor' ? 'estudiante' : 'profesor') + '">' + E(x.texto || '') + '<small>' + (x.de === 'profesor' ? 'Tú' : E(x.deNombre || 'Estudiante')) + ' · ' + segFecha(x.creado) + (x.grupo ? ' · mensaje grupal' : '') + '</small></div>').join('') + '</div>' +
+              '<textarea rows="2" data-borrador="m_' + est.uid + '" placeholder="Responder a ' + E(est.nombre || 'este estudiante') + '..." style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:\'Inter\', sans-serif; resize:vertical;"></textarea>' +
+              '<button type="button" class="seg-btn prim" style="margin-top:6px;" data-act="enviar" data-uid="' + est.uid + '">Responder</button></div>' : '') + '</div>';
+        }).join('')) + '</div>';
       return h;
     }
 
     async function enviarMensajes(uids, texto){
       const lote = writeBatch(db);
+      const grupo = uids.length > 1;
       uids.forEach(uid => {
         const est = S.estudiantes.find(e => e.uid === uid);
         lote.set(doc(collection(db, 'mensajes')), {
           cursoId: curso.id, estudianteUid: uid, estudianteNombre: (est && est.nombre) || '', de: 'profesor', deUid: profesorUid,
-          deNombre: (identidadActual && identidadActual.nombre) || 'Profesor', profesorUid, texto, creado: Date.now(), leido: false
+          deNombre: (identidadActual && identidadActual.nombre) || 'Profesor', profesorUid, texto, creado: Date.now(), leido: false, grupo
         });
       });
       await lote.commit();
     }
 
-    // ---- reportes ----
+    function destinatarios(datos){
+      const v = S.destino;
+      if (v === 'todos') return datos.map(d => d.est.uid);
+      if (v === 'sel') return Array.from(S.seleccion);
+      if (v === 'atencion') return datos.filter(d => d.m.atencion).map(d => d.est.uid);
+      if (v && v.startsWith('u:')) return [v.slice(2)];
+      return [];
+    }
+
+    // ---------- Pestaña: Contenido (estructura de solo lectura) ----------
+    async function cargarEstructuraTab(){
+      const p = pane('estructura');
+      if (S.estructuraCargada) return;
+      S.estructuraCargada = true;
+      p.innerHTML = '<p class="est-ayuda">Cargando contenido…</p>';
+      try {
+        const modulos = await cargarEstructuraSoloLectura(curso.id);
+        p.innerHTML = renderEstructuraSoloLectura(modulos, curso.id);
+        p.querySelectorAll('.foro-toggle-btn-prof').forEach(foroBtn => {
+          foroBtn.addEventListener('click', () => {
+            const moduloId = foroBtn.dataset.moduloId;
+            const cId = foroBtn.dataset.cursoId;
+            const foroPanel = p.querySelector('.foro-panel-prof[data-for="' + moduloId + '"]');
+            const foroAbierto = foroPanel.style.display === 'block';
+            foroPanel.style.display = foroAbierto ? 'none' : 'block';
+            if (!foroAbierto && foroPanel.dataset.cargado !== 'true') {
+              foroPanel.dataset.cargado = 'true';
+              construirPanelForo(foroPanel, { moduloId, cursoId: cId, esProfesor: true });
+            }
+          });
+        });
+      } catch (err) {
+        S.estructuraCargada = false;
+        p.innerHTML = '<p style="color:var(--danger); font-size:12.5px;">No se pudo cargar el contenido.</p>';
+      }
+    }
+
+    // ---------- Reportes ----------
     async function datosParaReporte(uids){
       await Promise.all(uids.map(uid => segCargarSesiones(S, curso, uid)));
       return uids.map(uid => S.estudiantes.find(e => e.uid === uid)).filter(Boolean).map(est => ({ est, m: segMetricas(est, curso, S), ses: S.sesiones[est.uid] || [], resp: S.respuestas.filter(r => r.uid === est.uid) }));
@@ -5277,11 +5372,11 @@ Contenido del subtema.
 
     function csvDe(filas){
       const esc = (v) => '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"';
-      const cab = ['Nombre', 'Tipo de documento', 'Número de documento', 'Avance %', 'Lecciones vistas', 'Lecciones totales', 'Horas en la plataforma', 'Horas mínimas', 'Entradas', 'Última conexión', 'Nota del curso', 'Evaluaciones presentadas', 'Evaluaciones aprobadas', 'Estado'];
+      const cab = ['Nombre', 'Tipo de documento', 'Número de documento', 'Avance %', 'Lecciones vistas', 'Lecciones totales', 'Horas en la plataforma', 'Horas mínimas', 'Entradas', 'Última actividad', 'Permanencia %', 'Exámenes de temas %', 'Exámenes de módulo %', 'Examen final %', 'Nota total', 'Resultado'];
       const lineas = [cab].concat(filas.map(({ est, m }) => [
         est.nombre || '', est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula', est.numeroDocumento || '', m.pct, m.leccionesVistas, m.leccionesTotal,
-        (m.horas).toFixed(1), curso.horasMinimas || 0, m.entradas, m.ultimaActividad ? segFecha(m.ultimaActividad) : 'Nunca', m.nota.nota,
-        m.calificados.length, m.calificados.filter(r => r.aprobado).length, m.estados.map(e => e.t.replace(/^[^\wÁÉÍÓÚáéíóúñÑ]+\s*/, '')).join(' / ')
+        m.horas.toFixed(1), curso.horasMinimas || 0, m.entradas, m.ultimaTs ? segFecha(m.ultimaTs) : 'Sin registro',
+        Math.round(m.nota.permanenciaPct), Math.round(m.nota.temasPct), Math.round(m.nota.moduloPct), Math.round(m.nota.finalPct), m.nota.nota, m.nota.resultado
       ]));
       return '﻿' + lineas.map(l => l.map(esc).join(',')).join('\r\n');
     }
@@ -5290,87 +5385,123 @@ Contenido del subtema.
       const blob = new Blob([csvDe(filas)], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'seguimiento-' + String(curso.nombre || 'curso').replace(/[^\wÁÉÍÓÚáéíóúñÑ]+/g, '-') + '.csv';
+      a.download = 'evaluacion-' + String(curso.nombre || 'curso').replace(/[^\wÁÉÍÓÚáéíóúñÑ]+/g, '-') + '.csv';
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     }
 
-    async function abrirReporte(uids){
+    const ESTILO_REPORTE = '@page{size:letter;margin:1.5cm;} *{box-sizing:border-box;} body{font-family:Georgia,"Times New Roman",serif;color:#16233d;margin:0;font-size:12px;} section{page-break-after:always;} section:last-child{page-break-after:auto;}' +
+      '.enc{white-space:pre-wrap;text-align:center;border-bottom:2px solid #025526;padding-bottom:8px;margin-bottom:10px;font-size:12px;} h1{font-size:18px;color:#025526;text-align:center;margin:0 0 2px;} .sub{text-align:center;color:#5b6b87;margin:0 0 12px;}' +
+      'h2{font-size:13px;color:#025526;border-bottom:1px solid #c3cbda;padding-bottom:3px;margin:14px 0 6px;} table{width:100%;border-collapse:collapse;margin-bottom:6px;} th,td{border:1px solid #c3cbda;padding:4px 6px;text-align:left;font-size:11.5px;} th{background:#f4f7fb;} td.et{font-weight:700;background:#f4f7fb;width:16%;}' +
+      '.kpis{display:flex;gap:8px;margin:10px 0;} .kpis div{flex:1;border:1px solid #c3cbda;border-radius:6px;padding:6px;text-align:center;font-size:10.5px;color:#5b6b87;} .kpis b{display:block;font-size:16px;color:#16233d;} .nota{font-size:11px;color:#5b6b87;margin:4px 0;} ul{margin:4px 0;padding-left:18px;} .obs{height:90px;border:1px solid #c3cbda;border-radius:6px;} .firma{margin-top:40px;text-align:center;font-size:11px;} .firma div{display:inline-block;border-top:1px solid #16233d;padding-top:4px;min-width:220px;}';
+
+    function abrirVentanaReporte(titulo, cuerpoFn){
       const ventana = window.open('', '_blank');
-      if (!ventana) { alert('El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio e intenta de nuevo.'); return; }
+      if (!ventana) { alert('El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio e intenta de nuevo.'); return null; }
       ventana.document.write('<p style="font-family:sans-serif; padding:20px;">Preparando el reporte…</p>');
-      const filas = await datosParaReporte(uids);
-      const E = escaparHtmlImp;
-      const fecha = new Date().toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
-      const encabezado = curso.encabezadoImpresion ? '<div class="enc">' + E(curso.encabezadoImpresion) + '</div>' : '';
-      let cuerpo = '';
-      if (filas.length > 1) {
-        cuerpo += '<section>' + encabezado + '<h1>Reporte de seguimiento del grupo</h1><p class="sub">' + E(curso.nombre || '') + ' · ' + fecha + ' · ' + filas.length + ' estudiantes</p>' +
-          '<table><tr><th>Estudiante</th><th>Documento</th><th>Avance</th><th>Horas</th><th>Entradas</th><th>Última conexión</th><th>Nota</th><th>Estado</th></tr>' +
-          filas.map(({ est, m }) => '<tr><td>' + E(est.nombre || '') + '</td><td>' + E(est.numeroDocumento || '-') + '</td><td>' + m.pct + '%</td><td>' + m.horas.toFixed(1) + '</td><td>' + m.entradas + '</td><td>' + (m.ultimaActividad ? segFecha(m.ultimaActividad) : 'Nunca') + '</td><td><b>' + m.nota.nota + '</b></td><td>' + E(m.estados.map(e => e.t).join(' · ')) + '</td></tr>').join('') +
-          '</table><p class="nota">Nota del curso = permanencia ' + (curso.pesoPermanencia ?? 20) + '% + exámenes de temas ' + (curso.pesoTemas ?? 20) + '% + módulo ' + (curso.pesoModulo ?? 30) + '% + final ' + (curso.pesoFinal ?? 30) + '%. Mínimo para aprobar: 70/100.</p></section>';
-      }
-      filas.forEach(({ est, m, ses, resp }) => {
-        cuerpo += '<section>' + encabezado + '<h1>Reporte de seguimiento del estudiante</h1><p class="sub">' + E(curso.nombre || '') + ' · ' + fecha + '</p>' +
-          '<table class="datos"><tr><td class="et">Nombre completo</td><td>' + E(est.nombre || '') + '</td><td class="et">' + (est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula') + '</td><td>' + E(est.numeroDocumento || '-') + '</td></tr></table>' +
-          '<div class="kpis"><div><b>' + m.pct + '%</b>Avance</div><div><b>' + m.leccionesVistas + '/' + m.leccionesTotal + '</b>Lecciones vistas</div><div><b>' + formatearHorasMinutos(m.segundos) + '</b>de ' + (curso.horasMinimas || 0) + ' h mínimas</div><div><b>' + m.entradas + '</b>Entradas</div><div><b>' + m.nota.nota + '/100</b>' + (m.nota.aprobado ? 'Nota (aprueba)' : 'Nota del curso') + '</div></div>' +
-          '<p class="nota">Última conexión: ' + (m.ultimaActividad ? segFecha(m.ultimaActividad) : 'Nunca') + ' · Estado: ' + E(m.estados.map(e => e.t).join(' · ')) + '</p>' +
-          '<h2>Evaluaciones con nota</h2>' + (m.calificados.length ? '<table><tr><th>Evaluación</th><th>Tipo</th><th>Puntaje</th><th>Resultado</th></tr>' + m.calificados.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + (SEG_NIVEL[r.nivel] || '') + '</td><td>' + r.puntaje + '/100</td><td>' + (r.aprobado ? 'Aprobado' : 'No aprobado') + '</td></tr>').join('') + '</table>' : '<p class="nota">Sin evaluaciones presentadas.</p>') +
-          '<h2>Pruebas de retroalimentación</h2>' + (m.retro.length ? '<table><tr><th>Prueba</th><th>Puntaje</th></tr>' + m.retro.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + r.puntaje + '/100</td></tr>').join('') + '</table>' : '<p class="nota">Sin pruebas realizadas.</p>') +
-          '<h2>Reflexiones y actividades entregadas</h2>' + (resp.length ? '<ul>' + resp.map(r => '<li>' + (r.nivel === 'tema' ? 'Actividad de aprendizaje' : 'Reflexión') + ': ' + E(segTituloNivel(S, r.nivel, r.nivelId) || '') + '</li>').join('') + '</ul>' : '<p class="nota">Sin entregas.</p>') +
-          '<h2>Últimas entradas a la plataforma</h2>' + (ses.length ? '<table><tr><th>Entró</th><th>Salió</th><th>Duración</th></tr>' + ses.slice(0, 8).map(x => { const fin = x.fin || x.ultimo || x.inicio; return '<tr><td>' + segFecha(x.inicio) + '</td><td>' + segFecha(fin) + '</td><td>' + segDuracion(fin - x.inicio) + '</td></tr>'; }).join('') + '</table>' : '<p class="nota">Sin entradas registradas.</p>') +
-          '<h2>Observaciones del profesor</h2><div class="obs"></div></section>';
+      cuerpoFn().then(cuerpo => {
+        ventana.document.open();
+        ventana.document.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + E(titulo) + '</title><style>' + ESTILO_REPORTE + '</style></head><body>' + cuerpo + '</body></html>');
+        ventana.document.close();
+        ventana.focus();
+        setTimeout(() => ventana.print(), 400);
       });
-      ventana.document.open();
-      ventana.document.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Reporte de seguimiento</title><style>' +
-        '@page{size:letter;margin:1.5cm;} *{box-sizing:border-box;} body{font-family:Georgia,"Times New Roman",serif;color:#16233d;margin:0;font-size:12px;} section{page-break-after:always;} section:last-child{page-break-after:auto;}' +
-        '.enc{white-space:pre-wrap;text-align:center;border-bottom:2px solid #025526;padding-bottom:8px;margin-bottom:10px;font-size:12px;} h1{font-size:18px;color:#025526;text-align:center;margin:0 0 2px;} .sub{text-align:center;color:#5b6b87;margin:0 0 12px;}' +
-        'h2{font-size:13px;color:#025526;border-bottom:1px solid #c3cbda;padding-bottom:3px;margin:14px 0 6px;} table{width:100%;border-collapse:collapse;margin-bottom:6px;} th,td{border:1px solid #c3cbda;padding:4px 6px;text-align:left;font-size:11.5px;} th{background:#f4f7fb;} td.et{font-weight:700;background:#f4f7fb;width:16%;}' +
-        '.kpis{display:flex;gap:8px;margin:10px 0;} .kpis div{flex:1;border:1px solid #c3cbda;border-radius:6px;padding:6px;text-align:center;font-size:10.5px;color:#5b6b87;} .kpis b{display:block;font-size:16px;color:#16233d;} .nota{font-size:11px;color:#5b6b87;margin:4px 0;} ul{margin:4px 0;padding-left:18px;} .obs{height:90px;border:1px solid #c3cbda;border-radius:6px;}' +
-        '</style></head><body>' + cuerpo + '</body></html>');
-      ventana.document.close();
-      ventana.focus();
-      setTimeout(() => ventana.print(), 400);
+      return ventana;
     }
 
-    // ---- eventos (un solo oyente, el panel se redibuja solo) ----
-    panel.addEventListener('change', (e) => {
+    const fechaHoy = () => new Date().toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
+    const lineaInicio = () => curso.fechaInicio ? ' · Inicio del curso: ' + segFechaDia(curso.fechaInicio) : '';
+    const encabezadoHtml = () => curso.encabezadoImpresion ? '<div class="enc">' + E(curso.encabezadoImpresion) + '</div>' : '';
+
+    function abrirReporte(uids){
+      abrirVentanaReporte('Reporte de seguimiento', async () => {
+        const filas = await datosParaReporte(uids);
+        let cuerpo = '';
+        if (filas.length > 1) {
+          cuerpo += '<section>' + encabezadoHtml() + '<h1>Reporte de seguimiento del grupo</h1><p class="sub">' + E(curso.nombre || '') + lineaInicio() + ' · Emitido: ' + fechaHoy() + ' · ' + filas.length + ' estudiantes</p>' +
+            '<table><tr><th>Estudiante</th><th>Documento</th><th>Avance</th><th>Horas</th><th>Entradas</th><th>Última actividad</th><th>Nota</th><th>Resultado</th></tr>' +
+            filas.map(({ est, m }) => '<tr><td>' + E(est.nombre || '') + '</td><td>' + E(est.numeroDocumento || '-') + '</td><td>' + m.pct + '%</td><td>' + m.horas.toFixed(1) + '</td><td>' + (m.entradas || '-') + '</td><td>' + (m.ultimaTs ? segFecha(m.ultimaTs) : 'Sin registro') + '</td><td><b>' + m.nota.nota + '</b></td><td>' + m.nota.resultado + '</td></tr>').join('') +
+            '</table><p class="nota">Nota del curso = permanencia ' + (curso.pesoPermanencia ?? 20) + '% + exámenes de temas ' + (curso.pesoTemas ?? 20) + '% + módulo ' + (curso.pesoModulo ?? 30) + '% + final ' + (curso.pesoFinal ?? 30) + '%. Mínimo para aprobar: 70/100.</p></section>';
+        }
+        filas.forEach(({ est, m, ses, resp }) => {
+          cuerpo += '<section>' + encabezadoHtml() + '<h1>Reporte de seguimiento del estudiante</h1><p class="sub">' + E(curso.nombre || '') + lineaInicio() + ' · Emitido: ' + fechaHoy() + '</p>' +
+            '<table><tr><td class="et">Nombre completo</td><td>' + E(est.nombre || '') + '</td><td class="et">' + (est.tipoDocumento === 'pasaporte' ? 'Pasaporte' : 'Cédula') + '</td><td>' + E(est.numeroDocumento || '-') + '</td></tr></table>' +
+            '<div class="kpis"><div><b>' + m.pct + '%</b>Avance</div><div><b>' + m.leccionesVistas + '/' + m.leccionesTotal + '</b>Lecciones vistas</div><div><b>' + formatearHorasMinutos(m.segundos) + '</b>de ' + (curso.horasMinimas || 0) + ' h mínimas</div><div><b>' + (m.entradas || '-') + '</b>Entradas</div><div><b>' + m.nota.nota + '/100</b>' + m.nota.resultado + '</div></div>' +
+            '<p class="nota">Última actividad: ' + (m.ultimaTs ? segFecha(m.ultimaTs) : 'Sin registro') + '</p>' +
+            '<h2>Evaluaciones con nota</h2>' + (m.calificados.length ? '<table><tr><th>Evaluación</th><th>Tipo</th><th>Puntaje</th><th>Resultado</th></tr>' + m.calificados.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + (SEG_NIVEL[r.nivel] || '') + '</td><td>' + r.puntaje + '/100</td><td>' + (r.aprobado ? 'Aprobado' : 'No aprobado') + '</td></tr>').join('') + '</table>' : '<p class="nota">Sin evaluaciones presentadas.</p>') +
+            '<h2>Pruebas de retroalimentación</h2>' + (m.retro.length ? '<table><tr><th>Prueba</th><th>Puntaje</th></tr>' + m.retro.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + r.puntaje + '/100</td></tr>').join('') + '</table>' : '<p class="nota">Sin pruebas realizadas.</p>') +
+            '<h2>Reflexiones y actividades entregadas</h2>' + (resp.length ? '<ul>' + resp.map(r => '<li>' + (r.nivel === 'tema' ? 'Actividad de aprendizaje' : 'Reflexión') + ': ' + E(segTituloNivel(S, r.nivel, r.nivelId) || '') + '</li>').join('') + '</ul>' : '<p class="nota">Sin entregas.</p>') +
+            '<h2>Últimas entradas a la plataforma</h2>' + (ses.length ? '<table><tr><th>Entró</th><th>Salió</th><th>Duración</th></tr>' + ses.slice(0, 8).map(x => { const fin = x.fin || x.ultimo || x.inicio; return '<tr><td>' + segFecha(x.inicio) + '</td><td>' + segFecha(fin) + '</td><td>' + segDuracion(fin - x.inicio) + '</td></tr>'; }).join('') + '</table>' : '<p class="nota">Sin entradas registradas.</p>') +
+            '<h2>Observaciones del profesor</h2><div class="obs"></div></section>';
+        });
+        return cuerpo;
+      });
+    }
+
+    // Informe de evaluación del curso: lo que se imprime para entregar o archivar
+    function abrirInforme(uids){
+      abrirVentanaReporte('Informe de evaluación del curso', async () => {
+        const filas = await datosParaReporte(uids);
+        filas.sort((a, b) => String(a.est.nombre || '').localeCompare(String(b.est.nombre || '')));
+        const pp = curso.pesoPermanencia ?? 20, pt = curso.pesoTemas ?? 20, pm = curso.pesoModulo ?? 30, pf = curso.pesoFinal ?? 30;
+        let cuerpo = '<section>' + encabezadoHtml() + '<h1>Informe de evaluación del curso</h1><p class="sub">' + E(curso.nombre || '') + lineaInicio() + ' · Emitido: ' + fechaHoy() + '</p>' +
+          '<table><tr><th>Estudiante</th><th>Documento</th><th>Permanencia (' + pp + '%)</th><th>Temas (' + pt + '%)</th><th>Módulo (' + pm + '%)</th><th>Final (' + pf + '%)</th><th>Nota total</th><th>Resultado</th></tr>' +
+          filas.map(({ est, m }) => '<tr><td>' + E(est.nombre || '') + '</td><td>' + E(est.numeroDocumento || '-') + '</td><td>' + Math.round(m.nota.permanenciaPct) + '%</td><td>' + Math.round(m.nota.temasPct) + '%</td><td>' + Math.round(m.nota.moduloPct) + '%</td><td>' + Math.round(m.nota.finalPct) + '%</td><td><b>' + m.nota.nota + '/100</b></td><td>' + m.nota.resultado + '</td></tr>').join('') + '</table>' +
+          '<p class="nota">Nota del curso = permanencia ' + pp + '% + exámenes de temas ' + pt + '% + exámenes de módulo ' + pm + '% + examen final ' + pf + '%. Mínimo para aprobar: 70/100. "En curso" significa que el estudiante todavía no presenta el examen final.</p>' +
+          '<h2>Detalle de evaluaciones</h2>' +
+          filas.map(({ est, m }) => '<p style="margin:10px 0 3px;"><b>' + E(est.nombre || '') + '</b> · ' + m.nota.nota + '/100 · ' + m.nota.resultado + '</p>' +
+            (m.calificados.length ? '<table><tr><th>Evaluación</th><th>Tipo</th><th>Puntaje</th><th>Resultado</th></tr>' + m.calificados.map(r => '<tr><td>' + E(r.titulo || '') + '</td><td>' + (SEG_NIVEL[r.nivel] || '') + '</td><td>' + r.puntaje + '/100</td><td>' + (r.aprobado ? 'Aprobado' : 'No aprobado') + '</td></tr>').join('') + '</table>' : '<p class="nota">Sin evaluaciones presentadas.</p>')).join('') +
+          '<div class="firma"><div>Firma del profesor</div></div></section>';
+        return cuerpo;
+      });
+    }
+
+    // ---------- Eventos ----------
+    raiz.addEventListener('change', (e) => {
       const t = e.target;
       if (t.dataset && t.dataset.act === 'sel') {
         if (t.checked) S.seleccion.add(t.dataset.uid); else S.seleccion.delete(t.dataset.uid);
         render();
+      } else if (t.dataset && t.dataset.zona === 'destino') {
+        S.destino = t.value;
       }
     });
-    panel.addEventListener('focusout', () => { if (S.pendiente) setTimeout(render, 250); });
-    panel.addEventListener('click', async (e) => {
+    raiz.addEventListener('input', (e) => {
+      if (e.target.dataset && e.target.dataset.zona === 'busqueda') { S.busqueda = e.target.value; aplicarBusqueda(); }
+    });
+    raiz.addEventListener('focusout', () => { if (S.pendiente) setTimeout(render, 250); });
+    raiz.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-act]');
       if (!b || b.tagName === 'INPUT') return;
       const act = b.dataset.act;
       const uid = b.dataset.uid;
-      if (act === 'filtro') { S.filtro = b.dataset.v; render(); }
+      const irA = (tab) => { S.tab = tab; render(); window.scrollTo({ top: raiz.getBoundingClientRect().top + window.scrollY - 10 }); };
+      if (act === 'tab') { S.tab = b.dataset.v; render(); }
+      else if (act === 'filtro') { S.filtro = b.dataset.v; render(); }
       else if (act === 'todos-sel') { S.estudiantes.forEach(x => S.seleccion.add(x.uid)); render(); }
       else if (act === 'ninguno-sel') { S.seleccion.clear(); render(); }
       else if (act === 'detalle') {
-        if (S.abiertos.has(uid)) S.abiertos.delete(uid);
-        else {
-          S.abiertos.add(uid);
-          S.mensajes.filter(m => m.estudianteUid === uid && m.de === 'estudiante' && !m.leido).forEach(m => updateDoc(doc(db, 'mensajes', m.id), { leido: true }).catch(() => {}));
-        }
+        if (S.abiertos.has(uid)) S.abiertos.delete(uid); else S.abiertos.add(uid);
         render();
       }
-      else if (act === 'msg-grupo') { S.grupoAbierto = true; render(); }
-      else if (act === 'cancelar-grupo') { S.grupoAbierto = false; S.borradores.grupo = ''; render(); }
-      else if (act === 'enviar-grupo') {
-        const t = panel.querySelector('[data-borrador="grupo"]');
+      else if (act === 'ir-detalle') { S.abiertos.add(uid); S.busqueda = ''; irA('estudiantes'); }
+      else if (act === 'escribir') { S.destino = 'u:' + uid; S.hiloAbierto = S.mensajes.some(m => m.estudianteUid === uid) ? uid : null; if (S.hiloAbierto) marcarLeidos(uid); irA('mensajes'); }
+      else if (act === 'ir-mensajes-sel') { S.destino = 'sel'; irA('mensajes'); }
+      else if (act === 'hilo') { S.hiloAbierto = S.hiloAbierto === uid ? null : uid; if (S.hiloAbierto) marcarLeidos(uid); render(); }
+      else if (act === 'enviar-nuevo') {
+        const t = raiz.querySelector('[data-borrador="nuevo"]');
         const texto = t ? t.value.trim() : '';
-        if (!texto) return;
+        const dest = destinatarios(datosOrdenados());
+        if (!texto) { alert('Escribe el mensaje primero.'); return; }
+        if (dest.length === 0) { alert('No hay estudiantes para ese destino.'); return; }
         b.disabled = true;
-        try { await enviarMensajes(Array.from(S.seleccion), texto); S.borradores.grupo = ''; S.grupoAbierto = false; alert('Mensaje enviado a ' + S.seleccion.size + ' estudiante(s).'); }
-        catch (err) { alert('No se pudo enviar el mensaje. Intenta de nuevo.'); b.disabled = false; }
+        try { await enviarMensajes(dest, texto); S.borradores.nuevo = ''; alert('Mensaje enviado a ' + dest.length + ' estudiante' + (dest.length === 1 ? '' : 's') + '.'); }
+        catch (err) { alert('No se pudo enviar el mensaje. Intenta de nuevo.'); }
+        b.disabled = false;
         render();
       }
       else if (act === 'enviar') {
-        const t = panel.querySelector('[data-borrador="m_' + uid + '"]');
+        const t = raiz.querySelector('[data-borrador="m_' + uid + '"]');
         const texto = t ? t.value.trim() : '';
         if (!texto) return;
         b.disabled = true;
@@ -5379,20 +5510,39 @@ Contenido del subtema.
         b.disabled = false;
         render();
       }
+      else if (act === 'guardar-fechas') {
+        const ini = raiz.querySelector('[data-fecha="inicio"]').value;
+        const fin = raiz.querySelector('[data-fecha="fin"]').value;
+        if (ini && fin && fin < ini) { alert('La fecha de finalización no puede ser anterior a la de inicio.'); return; }
+        b.disabled = true;
+        try {
+          await updateDoc(doc(db, 'cursos', curso.id), { fechaInicio: ini, fechaFin: fin });
+          curso.fechaInicio = ini; curso.fechaFin = fin; S.fechasGuardadas = Date.now();
+        } catch (err) { alert('No se pudieron guardar las fechas. Revisa que las reglas de Firestore estén actualizadas.'); }
+        b.disabled = false;
+        render();
+        const encab = document.querySelector('.prof-curso-cab-fechas'); if (encab) encab.textContent = textoFechasCab(curso);
+      }
       else if (act === 'reporte-uno') abrirReporte([uid]);
       else if (act === 'reporte-sel') abrirReporte(Array.from(S.seleccion));
-      else if (act === 'reporte-todos') abrirReporte(S.estudiantes.map(x => x.uid));
+      else if (act === 'informe-sel') abrirInforme(Array.from(S.seleccion));
+      else if (act === 'informe-todos') abrirInforme(S.estudiantes.map(x => x.uid));
       else if (act === 'csv-sel') descargarCsv(await datosParaReporte(Array.from(S.seleccion)));
+      else if (act === 'csv-todos') descargarCsv(await datosParaReporte(S.estudiantes.map(x => x.uid)));
     });
 
-    // ---- datos en vivo ----
+    function marcarLeidos(uid){
+      S.mensajes.filter(m => m.estudianteUid === uid && m.de === 'estudiante' && !m.leido).forEach(m => updateDoc(doc(db, 'mensajes', m.id), { leido: true }).catch(() => {}));
+    }
+
+    // ---------- Datos en vivo ----------
     (async () => {
       try {
         S.flat = await cargarContenidoDelCurso(curso.id);
         S.estr = construirEstructuraRuta(S.flat);
       } catch (err) { S.flat = []; S.estr = []; }
       S.listo++;
-      const falla = (err) => { console.error('Seguimiento:', err); panel.innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudo cargar el seguimiento. Revisa las reglas de Firestore e intenta de nuevo.</p>'; };
+      const falla = (err) => { console.error('Seguimiento:', err); pane('resumen').innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudo cargar el seguimiento. Revisa las reglas de Firestore e intenta de nuevo.</p>'; };
       unsubsProfesor.push(onSnapshot(query(collection(db, 'usuarios'), where('cursosIds', 'array-contains', curso.id), where('rol', '==', 'estudiante')),
         (snap) => { S.estudiantes = snap.docs.map(d => ({ uid: d.id, ...d.data() })); S.listo++; programarRender(); }, falla));
       unsubsProfesor.push(onSnapshot(query(collection(db, 'examenesResultados'), where('cursoId', '==', curso.id)),
@@ -5402,6 +5552,50 @@ Contenido del subtema.
       unsubsProfesor.push(onSnapshot(query(collection(db, 'mensajes'), where('cursoId', '==', curso.id)),
         (snap) => { S.mensajes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || 0) - (b.creado || 0)); programarRender(); }, () => {}));
     })();
+  }
+
+  function textoFechasCab(curso){
+    const partes = [];
+    if (curso.horasMinimas) partes.push('Mínimo ' + curso.horasMinimas + ' horas');
+    if (curso.fechaInicio) partes.push('Inicio: ' + segFechaDia(curso.fechaInicio));
+    if (curso.fechaFin) partes.push('Fin: ' + segFechaDia(curso.fechaFin));
+    return partes.join(' · ');
+  }
+
+  async function iniciarPanelProfesor(uid){
+    const cursosSnap = await getDocs(query(collection(db, 'cursos'), where('profesorUid', '==', uid)));
+    const cursos = cursosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    profesorCourseList.innerHTML = '';
+    unsubsProfesor.forEach(f => { try { f(); } catch (err) {} });
+    unsubsProfesor.length = 0;
+    if (cursos.length === 0) {
+      profesorCourseEmpty.style.display = 'block';
+      return;
+    }
+    profesorCourseEmpty.style.display = 'none';
+
+    const selector = document.createElement('div');
+    selector.className = 'prof-selector';
+    const espacio = document.createElement('div');
+    espacio.className = 'prof-espacio';
+    profesorCourseList.appendChild(selector);
+    profesorCourseList.appendChild(espacio);
+
+    function abrirCurso(curso){
+      unsubsProfesor.forEach(f => { try { f(); } catch (err) {} });
+      unsubsProfesor.length = 0;
+      selector.querySelectorAll('.prof-curso-chip').forEach(c => c.classList.toggle('activo', c.dataset.id === curso.id));
+      espacio.innerHTML = '<div class="prof-curso-cab"><div class="course-name" style="font-size:18px;">' + escaparHtmlImp(curso.nombre) + '</div><div class="course-hours prof-curso-cab-fechas">' + escaparHtmlImp(textoFechasCab(curso)) + '</div></div><div class="prof-cuerpo"></div>';
+      construirEspacioCurso(espacio.querySelector('.prof-cuerpo'), curso, uid);
+    }
+
+    if (cursos.length > 1) {
+      selector.innerHTML = '<div class="est-ayuda" style="margin:0 0 6px;">Elige el curso con el que quieres trabajar:</div>' +
+        cursos.map(c => '<button type="button" class="prof-curso-chip" data-id="' + c.id + '">📘 ' + escaparHtmlImp(c.nombre) + '</button>').join('');
+      selector.querySelectorAll('.prof-curso-chip').forEach(btn => btn.addEventListener('click', () => abrirCurso(cursos.find(c => c.id === btn.dataset.id))));
+    }
+    abrirCurso(cursos[0]);
   }
 
   // ---------- Bienvenida general (un solo documento, aplica a todos los cursos) ----------
