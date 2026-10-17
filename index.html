@@ -5061,7 +5061,7 @@ Contenido del subtema.
     raiz.innerHTML = '<div class="prof-tabs" data-zona="tabs"></div>' + TABS.map(x => '<div class="prof-pane" data-pane="' + x.id + '" style="display:none;"></div>').join('');
     const tabsEl = raiz.querySelector('[data-zona="tabs"]');
     const pane = (id) => raiz.querySelector('[data-pane="' + id + '"]');
-    pane('resumen').innerHTML = '<p class="est-ayuda">Cargando seguimiento…</p>';
+    tabsEl.innerHTML = '<p class="est-ayuda" style="margin:6px 0;">Cargando seguimiento…</p>';
 
     function programarRender(){ clearTimeout(temporizador); temporizador = setTimeout(render, 250); }
 
@@ -5083,7 +5083,15 @@ Contenido del subtema.
     }
 
     function render(){
-      if (S.listo < 3) return;
+      try { renderInterno(); } catch (err) { console.error('Panel profesor:', err); avisoVisible('No se pudo mostrar el panel (' + (err && err.message ? err.message : 'error') + '). Recarga la página; si sigue igual, avísame con este texto.'); }
+    }
+    function avisoVisible(txt){
+      let a = raiz.querySelector('[data-zona="aviso"]');
+      if (!a) { a = document.createElement('div'); a.dataset.zona = 'aviso'; a.style.cssText = 'padding:10px 12px; margin-bottom:10px; border-radius:10px; background:#fbe6e3; color:#b3261e; font-size:13px;'; raiz.insertBefore(a, raiz.firstChild); }
+      a.textContent = txt;
+    }
+    function renderInterno(){
+      if (!S.flatListo || !S.usuariosListo) return;
       const activo = document.activeElement;
       if (raiz.contains(activo) && (activo.tagName === 'TEXTAREA' || (activo.tagName === 'INPUT' && activo.type !== 'checkbox') || activo.tagName === 'SELECT')) { S.pendiente = true; return; }
       S.pendiente = false;
@@ -5541,12 +5549,12 @@ Contenido del subtema.
         S.flat = await cargarContenidoDelCurso(curso.id);
         S.estr = construirEstructuraRuta(S.flat);
       } catch (err) { S.flat = []; S.estr = []; }
-      S.listo++;
-      const falla = (err) => { console.error('Seguimiento:', err); pane('resumen').innerHTML = '<p style="font-size:12.5px; color:var(--danger); margin:0;">No se pudo cargar el seguimiento. Revisa las reglas de Firestore e intenta de nuevo.</p>'; };
+      S.flatListo = true;
+      const falla = (err) => { console.error('Seguimiento:', err); avisoVisible('No se pudo cargar una parte del seguimiento (' + (err && err.code ? err.code : 'error') + '). Revisa que las reglas de Firestore estén publicadas.'); S.usuariosListo = true; programarRender(); };
       unsubsProfesor.push(onSnapshot(query(collection(db, 'usuarios'), where('cursosIds', 'array-contains', curso.id), where('rol', '==', 'estudiante')),
-        (snap) => { S.estudiantes = snap.docs.map(d => ({ uid: d.id, ...d.data() })); S.listo++; programarRender(); }, falla));
+        (snap) => { S.estudiantes = snap.docs.map(d => ({ uid: d.id, ...d.data() })); S.usuariosListo = true; programarRender(); }, falla));
       unsubsProfesor.push(onSnapshot(query(collection(db, 'examenesResultados'), where('cursoId', '==', curso.id)),
-        (snap) => { S.resultados = snap.docs.map(d => d.data()); S.listo++; programarRender(); }, falla));
+        (snap) => { S.resultados = snap.docs.map(d => d.data()); programarRender(); }, falla));
       unsubsProfesor.push(onSnapshot(query(collection(db, 'actividadesRespuestas'), where('cursoId', '==', curso.id)),
         (snap) => { S.respuestas = snap.docs.map(d => d.data()); programarRender(); }, () => {}));
       unsubsProfesor.push(onSnapshot(query(collection(db, 'mensajes'), where('cursoId', '==', curso.id)),
